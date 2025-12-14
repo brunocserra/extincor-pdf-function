@@ -45,16 +45,18 @@ module.exports = async function (context, req) {
     await browser.close();
 
     // 4) Responder com PDF binário
-    context.res = {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': 'inline; filename="relatorio.pdf"',
-        'Cache-Control': 'no-store'
-      },
-      body: pdfBuffer,
-      isRaw: true
-    };
+context.res = {
+  status: 200,
+  headers: {
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': 'inline; filename="relatorio.pdf"',
+    'Cache-Control': 'no-store'
+  },
+  body: pdfBuffer.toString('base64'),
+  isRaw: true,
+  isBase64Encoded: true
+};
+
 
   } catch (err) {
     context.log.error(err);
