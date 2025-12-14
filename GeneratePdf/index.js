@@ -61,8 +61,9 @@ context.res = {
   } catch (err) {
     context.log.error(err);
     context.res = {
-      status: 500,
-      body: "Erro a gerar PDF"
-    };
+  status: 500,
+  headers: { "Content-Type": "text/plain; charset=utf-8" },
+  body: (err && (err.stack || err.message)) ? (err.stack || err.message) : JSON.stringify(err)
+};
   }
 };
