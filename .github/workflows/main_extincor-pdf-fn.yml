@@ -27,11 +27,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Resolve dependencies + install Playwright Chromium
+      - name: Install dependencies + Playwright Chromium
         shell: pwsh
         run: |
           pushd '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-          npm ci
+          npm install
           npx playwright install chromium
           npm run build --if-present
           npm run test --if-present
