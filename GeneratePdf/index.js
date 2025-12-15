@@ -1,22 +1,28 @@
-// Worker File: PdfQueueProcessor/index.js (Lógica principal)
+// Worker File: GeneratePdf/index.js (Lógica principal)
+
+// ** 1. DEPENDÊNCIAS (TODAS NO TOPO!) **
 const axios = require('axios');
 const mustache = require('mustache');
 const { BlobServiceClient } = require('@azure/storage-blob');
 const fs = require('fs');
 const path = require('path');
+const FormData = require('form-data'); // <-- CORREÇÃO: MOVIDO PARA O TOPO
 
+// ** 2. CARREGAR TEMPLATE HTML (UMA VEZ NA INICIALIZAÇÃO) **
 // Obtém o template HTML que está no mesmo nível que o diretório da função
 const templatePath = path.join(__dirname, '..', 'Preventiva.html');
 const templateHtml = fs.readFileSync(templatePath, 'utf8');
 
+// ** 3. FUNÇÃO PRINCIPAL (QUEUE TRIGGER) **
 // O Azure Function recebe a mensagem da fila (queueItem) e o contexto
 module.exports = async function (context, queueItem) {
     
     // ** VARIÁVEIS DE AMBIENTE (SECRETS) **
     const GOTENBERG_URL = process.env.GOTENBERG_URL; 
     const AZURE_STORAGE_CONNECTION_STRING = process.env.AzureWebJobsStorage;
-    const BLOB_CONTAINER_NAME = 'relatorios-pdf-finais'; // Verifique se este container foi criado!
+    const BLOB_CONTAINER_NAME = 'relatorios-pdf-finais'; 
 
+    // Verificação essencial
     if (!GOTENBERG_URL) {
         context.error("GOTENBERG_URL não está definido nas variáveis de ambiente!");
         return;
@@ -34,7 +40,7 @@ module.exports = async function (context, queueItem) {
         const finalHtml = mustache.render(templateHtml, viewData);
 
         // 3. CHAMAR GOTENBERG (HTTP POST com FormData)
-        const FormData = require('form-data');
+        // Usamos a classe FormData que foi carregada no topo do ficheiro
         const formData = new FormData();
         formData.append('files', finalHtml, { filename: 'index.html' });
         formData.append('printBackground', 'true');
@@ -51,7 +57,7 @@ module.exports = async function (context, queueItem) {
         const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
         const containerClient = blobServiceClient.getContainerClient(BLOB_CONTAINER_NAME);
         
-        // Certifica-se de que o container existe (opcional, mas seguro)
+        // Certifica-se de que o container existe
         await containerClient.createIfNotExists();
 
         const blobName = `${reportId}_${new Date().toISOString().replace(/:/g, '-')}.pdf`;
@@ -62,7 +68,7 @@ module.exports = async function (context, queueItem) {
         
     } catch (error) {
         context.error(`[JOB Error] Erro de processamento:`, error.message);
-        // Lança o erro para que o Azure Queue Storage tente novamente processar a mensagem (retry)
+        // Lança o erro para que o Azure Queue Storage tente novamente processar a mensagem
         throw error; 
     }
 };
