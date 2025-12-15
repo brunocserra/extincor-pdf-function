@@ -1,3 +1,4 @@
+# Docs for the Azure Web Apps Deploy action: https://github.com/azure/functions-action
 name: Build and deploy Node.js project to Azure Function App - extincor-pdf-fn
 
 on:
@@ -6,7 +7,6 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
   NODE_VERSION: '18.x'
   PLAYWRIGHT_BROWSERS_PATH: '.pw-browsers'
 
@@ -26,18 +26,13 @@ jobs:
 
       - name: Install deps
         shell: pwsh
-        run: |
-          pushd '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-          npm ci
-          popd
+        run: npm ci
 
       - name: Install Playwright Chromium (packaged)
         shell: pwsh
-        run: |
-          pushd '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-          $env:PLAYWRIGHT_BROWSERS_PATH='${{ env.PLAYWRIGHT_BROWSERS_PATH }}'
-          npm exec -- playwright install chromium
-          popd
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        run: npm exec -- playwright install chromium
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
