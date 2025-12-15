@@ -8,7 +8,6 @@ on:
 
 env:
   NODE_VERSION: '18.x'
-  PLAYWRIGHT_BROWSERS_PATH: '.pw-browsers'
 
 jobs:
   build:
@@ -28,11 +27,12 @@ jobs:
         shell: pwsh
         run: npm ci
 
-      - name: Install Playwright Chromium (bundle inside node_modules)
+      - name: Install Playwright Chromium (packaged)
         shell: pwsh
         env:
-          PLAYWRIGHT_BROWSERS_PATH: "0"
+          PLAYWRIGHT_BROWSERS_PATH: .pw-browsers
         run: npm exec -- playwright install chromium
+
 
 
       - name: Upload artifact
@@ -66,4 +66,5 @@ jobs:
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_4717CED1617D4ECBA56875B3D9156A43 }}
           scm-do-build-during-deployment: false
           enable-oryx-build: false
+
 
