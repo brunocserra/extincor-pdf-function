@@ -1,8 +1,9 @@
 {
   "name": "extincor-pdf-function",
   "version": "1.0.0",
+  "private": true,
   "scripts": {
-    "postinstall": "npm exec -- playwright install chromium"
+    "postinstall": "node -e \"console.log('skip postinstall on Azure');\""
   },
   "dependencies": {
     "playwright": "^1.57.0",
