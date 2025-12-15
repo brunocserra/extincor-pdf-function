@@ -1,12 +1,14 @@
 {
-  "name": "extincor-pdf-function",
+  "name": "extincor-pdf-worker",
   "version": "1.0.0",
-  "private": true,
+  "description": "Worker para gerar relatórios PDF com Gotenberg.",
+  "main": "index.js",
   "scripts": {
-    "postinstall": "node -e \"console.log('skip postinstall on Azure');\""
+    "start": "func start"
   },
   "dependencies": {
-    "playwright": "^1.57.0",
-    "handlebars": "^4.7.8"
+    "axios": "^1.6.8",
+    "mustache": "^4.2.0",
+    "@azure/storage-blob": "^12.17.0"
   }
 }
