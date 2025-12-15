@@ -1,56 +1,68 @@
-const path = require("path");
-const fs = require("fs");
+// Worker File: PdfQueueProcessor/index.js (Lógica principal)
+const axios = require('axios');
+const mustache = require('mustache');
+const { BlobServiceClient } = require('@azure/storage-blob');
+const fs = require('fs');
+const path = require('path');
 
-// 1) Define o path ANTES de carregar o Playwright
-process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(process.cwd(), ".pw-browsers");
+// Obtém o template HTML que está no mesmo nível que o diretório da função
+const templatePath = path.join(__dirname, '..', 'Preventiva.html');
+const templateHtml = fs.readFileSync(templatePath, 'utf8');
 
-const { chromium } = require("playwright");
-const Handlebars = require("handlebars");
+// O Azure Function recebe a mensagem da fila (queueItem) e o contexto
+module.exports = async function (context, queueItem) {
+    
+    // ** VARIÁVEIS DE AMBIENTE (SECRETS) **
+    const GOTENBERG_URL = process.env.GOTENBERG_URL; 
+    const AZURE_STORAGE_CONNECTION_STRING = process.env.AzureWebJobsStorage;
+    const BLOB_CONTAINER_NAME = 'relatorios-pdf-finais'; // Verifique se este container foi criado!
 
-module.exports = async function (context, req) {
-  try {
-    // Debug rápido (para confirmares no log que a pasta existe no Azure)
-    const pwPath = process.env.PLAYWRIGHT_BROWSERS_PATH;
-    context.log("PLAYWRIGHT_BROWSERS_PATH =", pwPath);
-    context.log("pw-browsers exists? =", fs.existsSync(pwPath));
-
-    const { templateHtml, data } = req.body || {};
-    if (!templateHtml || !data) {
-      context.res = { status: 400, body: "Missing templateHtml or data" };
-      return;
+    if (!GOTENBERG_URL) {
+        context.error("GOTENBERG_URL não está definido nas variáveis de ambiente!");
+        return;
     }
 
-    const template = Handlebars.compile(templateHtml);
-    const html = template(data);
+    try {
+        // 1. ANALISAR O JSON
+        const payload = JSON.parse(queueItem);
+        const { reportId, data, logoUrl } = payload; 
+        
+        context.log(`[JOB ${reportId}] Iniciando a geração...`);
 
-    const browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle" });
+        // 2. PREENCHER O TEMPLATE
+        const viewData = { ...data, logoUrl: logoUrl };
+        const finalHtml = mustache.render(templateHtml, viewData);
 
-    const pdfBuffer = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "15mm", bottom: "15mm", left: "15mm", right: "15mm" }
-    });
+        // 3. CHAMAR GOTENBERG (HTTP POST com FormData)
+        const FormData = require('form-data');
+        const formData = new FormData();
+        formData.append('files', finalHtml, { filename: 'index.html' });
+        formData.append('printBackground', 'true');
+        formData.append('scale', '0.9');
 
-    await browser.close();
+        const response = await axios.post(GOTENBERG_URL, formData, {
+            responseType: 'arraybuffer',
+            headers: { 'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}` }
+        });
 
-    context.res = {
-      status: 200,
-      isRaw: true,
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": 'inline; filename="relatorio.pdf"',
-        "Cache-Control": "no-store"
-      },
-      body: pdfBuffer
-    };
-  } catch (err) {
-    context.log.error(err);
-    context.res = {
-      status: 500,
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
-      body: err.stack || err.message || String(err)
-    };
-  }
+        const pdfBuffer = response.data;
+        
+        // 4. GUARDAR NO BLOB STORAGE
+        const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
+        const containerClient = blobServiceClient.getContainerClient(BLOB_CONTAINER_NAME);
+        
+        // Certifica-se de que o container existe (opcional, mas seguro)
+        await containerClient.createIfNotExists();
+
+        const blobName = `${reportId}_${new Date().toISOString().replace(/:/g, '-')}.pdf`;
+        const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+        
+        await blockBlobClient.upload(pdfBuffer, pdfBuffer.length);
+        context.log(`[JOB ${reportId}] Sucesso. URL: ${blockBlobClient.url}`);
+        
+    } catch (error) {
+        context.error(`[JOB Error] Erro de processamento:`, error.message);
+        // Lança o erro para que o Azure Queue Storage tente novamente processar a mensagem (retry)
+        throw error; 
+    }
 };
