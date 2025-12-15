@@ -1,16 +1,14 @@
-# Docs for the Azure Functions Deploy action: https://github.com/azure/functions-action
 name: Build and deploy Node.js project to Azure Function App - extincor-pdf-fn
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
   NODE_VERSION: '18.x'
-  PLAYWRIGHT_BROWSERS_PATH: '0'
+  PLAYWRIGHT_BROWSERS_PATH: '.pw-browsers'
 
 jobs:
   build:
@@ -19,47 +17,56 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node ${{ env.NODE_VERSION }}
+      - name: Setup Node
         uses: actions/setup-node@v3
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install dependencies + Playwright Chromium
+      - name: Install deps
         shell: pwsh
         run: |
           pushd '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-          npm install
-          npx playwright install chromium
-          npm run build --if-present
-          npm run test --if-present
+          npm ci
           popd
 
-      - name: Upload artifact for deployment job
+      - name: Install Playwright Chromium (packaged)
+        shell: pwsh
+        run: |
+          pushd '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
+          $env:PLAYWRIGHT_BROWSERS_PATH='${{ env.PLAYWRIGHT_BROWSERS_PATH }}'
+          npm exec -- playwright install chromium
+          popd
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: .
+          path: |
+            host.json
+            package.json
+            package-lock.json
+            GeneratePdf/**
+            node_modules/**
+            .pw-browsers/**
 
   deploy:
     runs-on: windows-latest
     needs: build
 
     steps:
-      - name: Download artifact from build job
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: node-app
 
-      - name: Run Azure Functions Action (build on Azure)
+      - name: Deploy to Azure Functions
         uses: Azure/functions-action@v1
-        id: fa
         with:
           app-name: 'extincor-pdf-fn'
           slot-name: 'Production'
-          package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+          package: '.'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_4717CED1617D4ECBA56875B3D9156A43 }}
-          scm-do-build-during-deployment: true
-          enable-oryx-build: true
+          scm-do-build-during-deployment: false
+          enable-oryx-build: false
