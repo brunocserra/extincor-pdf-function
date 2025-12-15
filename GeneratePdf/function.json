@@ -5,13 +5,8 @@
       "type": "queueTrigger",
       "direction": "in",
       "queueName": "pdf-generation-jobs",  // Nome da Fila
-      "connection": "AzureWebJobsStorage"  // Nome da variável de ambiente (ver Passo 11.2)
-    },
-    {
-      "type": "http",
-      "direction": "out",
-      "name": "res"
+      "connection": "AzureWebJobsStorage"  // Variável de ambiente
     }
   ],
-  "scriptFile": "../index.js" // Aponta para o index.js do diretório raiz
+  "scriptFile": "index.js" // Se o index.js está dentro da pasta GeneratePdf, este caminho é simples.
 }
