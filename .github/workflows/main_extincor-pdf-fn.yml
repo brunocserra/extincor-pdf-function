@@ -53,7 +53,7 @@ jobs:
         with:
           name: node-app
 
-      - name: Run Azure Functions Action
+      - name: Run Azure Functions Action (build on Azure)
         uses: Azure/functions-action@v1
         id: fa
         with:
@@ -61,3 +61,5 @@ jobs:
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_4717CED1617D4ECBA56875B3D9156A43 }}
+          scm-do-build-during-deployment: true
+          enable-oryx-build: true
