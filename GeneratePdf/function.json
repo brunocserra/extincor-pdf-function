@@ -1,16 +1,17 @@
 {
   "bindings": [
     {
-      "authLevel": "anonymous",
-      "type": "httpTrigger",
+      "name": "queueItem",
+      "type": "queueTrigger",
       "direction": "in",
-      "name": "req",
-      "methods": ["post"]
+      "queueName": "pdf-generation-jobs",  // Nome da Fila
+      "connection": "AzureWebJobsStorage"  // Nome da variável de ambiente (ver Passo 11.2)
     },
     {
       "type": "http",
       "direction": "out",
       "name": "res"
     }
-  ]
+  ],
+  "scriptFile": "../index.js" // Aponta para o index.js do diretório raiz
 }
