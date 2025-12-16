@@ -47,10 +47,11 @@ module.exports = async function (context, req) {
         formData.append('files', finalHtml, { filename: 'index.html' });
         // ... (o resto dos appends)
         
-        const response = await axios.post(GOTENBERG_URL, formData, {
-            responseType: 'arraybuffer',
-            headers: { 'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}` }
-        });
+const response = await axios.post(GOTENBERG_URL, formData, {
+            responseType: 'arraybuffer',
+            timeout: 15000, // Adiciona um timeout de 15 segundos (15000 ms)
+            headers: { 'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}` }
+        });
 
         const pdfBuffer = response.data;
         
