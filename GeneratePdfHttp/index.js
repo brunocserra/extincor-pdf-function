@@ -1,82 +1,127 @@
-// Worker File: GeneratePdfHttp/index.js (Lógica principal adaptada)
-
+const { app } = require('@azure/functions');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path'); // Adicionado o módulo 'path'
 const mustache = require('mustache');
 const { BlobServiceClient } = require('@azure/storage-blob');
-const fs = require('fs');
-const path = require('path');
-const FormData = require('form-data');
 
-// Carregar o template
-const templatePath = path.join(__dirname, '..', 'Preventiva.html');
-const templateHtml = fs.readFileSync(templatePath, 'utf8');
+// 1. Variáveis de Ambiente
+const GOTENBERG_URL = process.env.GOTENBERG_URL;
+const AZURE_STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING;
+const CONTAINER_NAME = 'pdf-reports'; // Nome do seu container no Blob Storage
 
-// ** FUNÇÃO PRINCIPAL (HTTP TRIGGER) **
-module.exports = async function (context, req) {
-    
-    // VARIÁVEIS DE AMBIENTE (SECRETS) 
-    const GOTENBERG_URL = process.env.GOTENBERG_URL; 
-    const AZURE_STORAGE_CONNECTION_STRING = process.env.AzureWebJobsStorage;
-    const BLOB_CONTAINER_NAME = 'relatorios-pdf-finais'; 
+app.http('GeneratePdfHttp', {
+    methods: ['POST'],
+    authLevel: 'anonymous',
+    handler: async (request, context) => {
 
-    if (!GOTENBERG_URL || !AZURE_STORAGE_CONNECTION_STRING) {
-        context.res = {
-            status: 500,
-            body: "Variáveis de ambiente (GOTENBERG_URL ou AzureWebJobsStorage) não definidas."
-        };
-        return;
-    }
+        context.log(`HTTP trigger function processed request for URL: ${request.url}`);
 
-    try {
-        // 1. ANALISAR O JSON DO CORPO HTTP
-        const payload = req.body; 
-        if (!payload || !payload.reportId) {
-            context.res = { status: 400, body: "Payload JSON inválido ou incompleto." };
-            return;
+        // --- 2. GUARDRAIL PARA VARIÁVEIS DE AMBIENTE ---
+        if (!GOTENBERG_URL || !AZURE_STORAGE_CONNECTION_STRING) {
+            context.error("Variáveis de ambiente (GOTENBERG_URL ou AZURE_STORAGE_CONNECTION_STRING) não definidas.");
+            return {
+                status: 500,
+                body: "Erro: Variáveis de ambiente críticas não definidas."
+            };
         }
 
-        const { reportId, data, logoUrl } = payload; 
-        context.log(`[JOB ${reportId}] Iniciando a geração via HTTP...`);
+        try {
+            const body = await request.json();
+            const { reportId, data, logoUrl } = body;
 
-        // 2. PREENCHER O TEMPLATE
-        const viewData = { ...data, logoUrl: logoUrl };
-        const finalHtml = mustache.render(templateHtml, viewData);
+            if (!reportId || !data) {
+                return {
+                    status: 400,
+                    body: "Por favor, passe 'reportId' e 'data' no corpo do pedido."
+                };
+            }
 
-        // 3. CHAMAR GOTENBERG (HTTP POST com FormData)
-        const formData = new FormData();
-        formData.append('files', finalHtml, { filename: 'index.html' });
-        // ... (o resto dos appends)
-        
-const response = await axios.post(GOTENBERG_URL, formData, {
-            responseType: 'arraybuffer',
-            timeout: 15000, // Adiciona um timeout de 15 segundos (15000 ms)
-            headers: { 'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}` }
-        });
+            // --- 3. Geração do HTML ---
 
-        const pdfBuffer = response.data;
-        
-        // 4. GUARDAR NO BLOB STORAGE
-        const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
-        const containerClient = blobServiceClient.getContainerClient(BLOB_CONTAINER_NAME);
-        
-        await containerClient.createIfNotExists();
+            // ** CORREÇÃO AQUI **
+            // Usa path.join e __dirname para garantir o caminho correto.
+            const templatePath = path.join(__dirname, 'Preventiva.html');
+            const htmlTemplate = fs.readFileSync(templatePath, 'utf8');
 
-        const blobName = `${reportId}_HTTP_TEST_${new Date().toISOString().replace(/:/g, '-')}.pdf`;
-        const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-        
-        await blockBlobClient.upload(pdfBuffer, pdfBuffer.length);
-        
-        // 5. RESPOSTA DE SUCESSO HTTP
-        context.res = {
-            status: 200,
-            body: `Sucesso. PDF (${blobName}) criado e guardado em Blob Storage.`
-        };
-        
-    } catch (error) {
-        context.error(`[JOB Error] Erro de processamento:`, error.message);
-        context.res = {
-            status: 500,
-            body: `Erro de processamento: ${error.message}`
-        };
+            const renderedHtml = mustache.render(htmlTemplate, { 
+                reportId, 
+                logoUrl, 
+                ...data 
+            });
+
+            // --- 4. Conversão para PDF (Chamada Gotenberg) ---
+            const gotenbergData = new FormData();
+            gotenbergData.append('files', new Blob([renderedHtml], { type: 'text/html' }), 'index.html');
+            
+            context.log(`A enviar HTML para o Gotenberg em: ${GOTENBERG_URL}`);
+            
+            const gotenbergResponse = await axios.post(GOTENBERG_URL, gotenbergData, {
+                responseType: 'arraybuffer', // Recebe o PDF como um buffer binário
+                headers: {
+                    ...gotenbergData.getHeaders ? gotenbergData.getHeaders() : {},
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+            
+            const pdfBuffer = gotenbergResponse.data;
+            const blobName = `relatorios/${reportId}.pdf`;
+
+            // --- 5. Upload para Azure Blob Storage ---
+
+            const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
+            const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
+
+            // Tenta criar o container se não existir
+            try {
+                await containerClient.createIfNotExists();
+            } catch (containerError) {
+                context.error(`Erro ao criar container: ${containerError.message}`);
+                throw new Error(`Erro de Container: ${containerError.message}`);
+            }
+
+            const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+
+            context.log(`A enviar PDF para Blob Storage: ${blobName}`);
+
+            await blockBlobClient.uploadData(Buffer.from(pdfBuffer), {
+                blobHTTPHeaders: { blobContentType: 'application/pdf' }
+            });
+
+            // --- 6. Resposta Final ---
+            const pdfUrl = blockBlobClient.url;
+            context.log(`PDF guardado com sucesso em: ${pdfUrl}`);
+
+            return {
+                status: 200,
+                body: JSON.stringify({
+                    message: `PDF ${reportId} gerado e guardado com sucesso.`,
+                    url: pdfUrl
+                }),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            };
+
+        } catch (error) {
+            
+            context.error(`Erro no processamento da função: ${error.message}`);
+            
+            // Tratamento de Erros Comuns de Conexão
+            let errorMessage = `Erro desconhecido: ${error.message}`;
+
+            if (error.response && error.response.status) {
+                 // Erro HTTP do Gotenberg
+                errorMessage = `Erro Gotenberg: Falha na conversão com o status ${error.response.status}. Detalhes: ${error.response.data ? error.response.data.toString() : 'N/A'}`;
+            } else if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+                // Erro de Firewall/Conexão
+                errorMessage = `Erro de Conexão: Incapaz de conectar ao Gotenberg. Verifique a Firewall/VNet ou o GOTENBERG_URL.`;
+            }
+
+            return {
+                status: 500,
+                body: JSON.stringify({ error: errorMessage })
+            };
+        }
     }
-};
+});
