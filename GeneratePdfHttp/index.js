@@ -8,20 +8,28 @@ const mustache = require("mustache");
 const { BlobServiceClient } = require("@azure/storage-blob");
 const FormData = require("form-data");
 
-// 1) Variáveis de ambiente
+// Variáveis de ambiente
 const GOTENBERG_URL = process.env.GOTENBERG_URL;
 const AZURE_STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING;
 const CONTAINER_NAME = "pdf-reports";
+
+// Helper simples para logs (compatível)
+function logInfo(context, msg) {
+  context.log(msg);
+}
+function logError(context, msg) {
+  context.log(`ERRO: ${msg}`);
+}
 
 app.http("GeneratePdfHttp", {
   methods: ["POST"],
   authLevel: "anonymous",
   handler: async (request, context) => {
-    context.log(`HTTP trigger: ${request.url}`);
+    logInfo(context, `HTTP trigger: ${request.url}`);
 
     // Guardrail: variáveis críticas
     if (!GOTENBERG_URL || !AZURE_STORAGE_CONNECTION_STRING) {
-      context.log.error("Variáveis de ambiente em falta (GOTENBERG_URL / AZURE_STORAGE_CONNECTION_STRING).");
+      logError(context, "Variáveis de ambiente em falta (GOTENBERG_URL / AZURE_STORAGE_CONNECTION_STRING).");
       return {
         status: 500,
         body: "Erro: variáveis de ambiente críticas não definidas."
@@ -40,7 +48,7 @@ app.http("GeneratePdfHttp", {
         };
       }
 
-      // 2) Gerar HTML a partir do template
+      // 1) Gerar HTML a partir do template
       const templatePath = path.join(__dirname, "Preventiva.html");
       const htmlTemplate = fs.readFileSync(templatePath, "utf8");
 
@@ -50,14 +58,14 @@ app.http("GeneratePdfHttp", {
         ...data
       });
 
-      // 3) Converter HTML -> PDF (Gotenberg)
+      // 2) Converter HTML -> PDF (Gotenberg)
       const form = new FormData();
       form.append("files", Buffer.from(renderedHtml, "utf8"), {
         filename: "index.html",
         contentType: "text/html"
       });
 
-      context.log(`A enviar HTML para o Gotenberg em: ${GOTENBERG_URL}`);
+      logInfo(context, `A enviar HTML para o Gotenberg em: ${GOTENBERG_URL}`);
 
       const gotenbergResponse = await axios.post(GOTENBERG_URL, form, {
         responseType: "arraybuffer",
@@ -70,7 +78,7 @@ app.http("GeneratePdfHttp", {
       const pdfBuffer = Buffer.from(gotenbergResponse.data);
       const blobName = `relatorios/${reportId}.pdf`;
 
-      // 4) Upload para Azure Blob Storage
+      // 3) Upload para Azure Blob Storage
       const blobServiceClient = BlobServiceClient.fromConnectionString(
         AZURE_STORAGE_CONNECTION_STRING
       );
@@ -80,15 +88,15 @@ app.http("GeneratePdfHttp", {
 
       const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
-      context.log(`A enviar PDF para Blob Storage: ${blobName}`);
+      logInfo(context, `A enviar PDF para Blob Storage: ${blobName}`);
 
       await blockBlobClient.uploadData(pdfBuffer, {
         blobHTTPHeaders: { blobContentType: "application/pdf" }
       });
 
-      // 5) Resposta
+      // 4) Resposta
       const pdfUrl = blockBlobClient.url;
-      context.log(`PDF guardado com sucesso em: ${pdfUrl}`);
+      logInfo(context, `PDF guardado com sucesso em: ${pdfUrl}`);
 
       return {
         status: 200,
@@ -99,7 +107,7 @@ app.http("GeneratePdfHttp", {
         }
       };
     } catch (error) {
-      context.log.error(`Erro no processamento: ${error.message}`);
+      logError(context, `Erro no processamento: ${error.message}`);
 
       let errorMessage = `Erro desconhecido: ${error.message}`;
 
@@ -107,13 +115,14 @@ app.http("GeneratePdfHttp", {
       if (error.response?.status) {
         const status = error.response.status;
 
-        // Limitar conversão do body para evitar lixo binário enorme
+        // Tentar extrair detalhe curto (evitar binários enormes)
         let details = "N/A";
         try {
           if (error.response.data) {
-            details = Buffer.isBuffer(error.response.data)
-              ? error.response.data.toString("utf8").slice(0, 2000)
-              : String(error.response.data).slice(0, 2000);
+            const raw = Buffer.isBuffer(error.response.data)
+              ? error.response.data.toString("utf8")
+              : String(error.response.data);
+            details = raw.slice(0, 2000);
           }
         } catch (_) {}
 
@@ -122,7 +131,8 @@ app.http("GeneratePdfHttp", {
         errorMessage =
           "Erro de Conexão: incapaz de conectar ao Gotenberg. Verifique rede/VNet/Firewall e GOTENBERG_URL.";
       } else if (error.code === "ETIMEDOUT") {
-        errorMessage = "Timeout ao chamar o Gotenberg. Aumente o timeout ou otimize o HTML/imagens.";
+        errorMessage =
+          "Timeout ao chamar o Gotenberg. Aumente o timeout ou otimize o HTML/imagens.";
       }
 
       return {
