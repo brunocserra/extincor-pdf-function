@@ -39,13 +39,25 @@ app.storageQueue("GeneratePdfFromQueue", {
       // throw => retry automático + poison queue se falhar
     }
 
-    const payload = parseQueueMessage(queueItem);
-    const { reportId, data, logoUrl } = payload || {};
+const payload = parseQueueMessage(queueItem) || {};
 
-    if (!reportId || !data) {
-      context.log("ERRO: Mensagem inválida na queue");
-      throw new Error("Invalid queue message: missing reportId or data");
-    }
+// Aceitar payload antigo e novo
+const data = payload.data ?? payload;
+
+// reportId pode vir direto ou dentro do header
+const reportId =
+  payload.reportId ??
+  payload.header?.reportNumber;
+
+if (!reportId) {
+  context.log("ERRO: payload sem reportId");
+  throw new Error("Invalid queue message: missing reportId");
+}
+
+const logoUrl = payload.logoUrl ?? data.logoUrl ?? "";
+
+context.log(`A gerar PDF para reportId=${reportId}`);
+
 
     context.log(`A gerar PDF para reportId=${reportId}`);
 
