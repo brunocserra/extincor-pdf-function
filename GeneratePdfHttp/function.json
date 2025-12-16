@@ -1,5 +1,5 @@
 {
-  "scriptFile": "httpTrigger.js", // <-- ADICIONAR ESTA LINHA!
+  "scriptFile": "index.js", // <-- ADICIONAR ESTA LINHA!
   "bindings": [
     {
       "authLevel": "anonymous",
