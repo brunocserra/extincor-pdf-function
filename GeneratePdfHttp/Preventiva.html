@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Relatório de Manutenção Preventiva - {{numRelatorio}}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 10pt;
+            margin: 0;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #0056b3;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .header img {
+            max-width: 150px;
+            height: auto;
+        }
+        .report-info, .client-info {
+            width: 48%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            display: inline-block;
+            vertical-align: top;
+        }
+        .client-info {
+            margin-left: 2%;
+        }
+        h1 {
+            color: #0056b3;
+            font-size: 14pt;
+            margin-top: 0;
+        }
+        .section-title {
+            background-color: #f0f0f0;
+            padding: 5px 10px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            border-left: 4px solid #0056b3;
+            font-weight: bold;
+        }
+        .content p {
+            margin: 5px 0;
+        }
+        .pre-formatted {
+            background-color: #f9f9f9;
+            padding: 10px;
+            border: 1px dashed #ccc;
+            white-space: pre-wrap; /* Mantém a formatação de <br> e \n */
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <img src="{{logoUrl}}" alt="Logo da Empresa"> 
+        <h2>RELATÓRIO TÉCNICO</h2>
+    </div>
+
+    <div class="report-info">
+        <h1>Detalhes do Serviço</h1>
+        <p><strong>Nº do Relatório:</strong> {{numRelatorio}}</p>
+        <p><strong>Data da Intervenção:</strong> {{dataIntervencao}}</p>
+        <p><strong>Tipo de Intervenção:</strong> {{tipoIntervencao}}</p>
+        <p><strong>Área de Intervenção:</strong> {{areaIntervencao}}</p>
+    </div>
+
+    <div class="client-info">
+        <h1>Dados do Cliente</h1>
+        <p><strong>Nome:</strong> {{clienteNome}}</p>
+        <p><strong>NIF:</strong> {{clienteNif}}</p>
+        <p><strong>Morada:</strong> {{morada}}</p>
+        <p><strong>E-mail:</strong> {{clienteEmail}}</p>
+    </div>
+    
+    <div style="clear: both;"></div>
+
+    <div class="section-title">Relatório e Situação Final</div>
+    <div class="content">
+        <p><strong>Relatório Técnico:</strong></p>
+        <div class="pre-formatted">{{relatorioTecnico}}</div>
+        <p style="margin-top: 15px;"><strong>Situação Final:</strong> <span>{{situacaoFinal}}</span></p>
+    </div>
+
+    <div class="section-title">Recursos Utilizados</div>
+    <div class="content">
+        <p><strong>Mão de Obra:</strong></p>
+        <div class="pre-formatted">{{{maoDeObra}}}</div>
+
+        <div class="pre-formatted">{{{material}}}</div>
+    </div>
+    
+    <div class="section-title">Observações</div>
+    <div class="content">
+        <div class="pre-formatted">
+            {{{observacoesCliente}}}
+        </div>
+    </div>
+
+    <div style="margin-top: 50px; border-top: 1px solid #ccc; padding-top: 10px;">
+        <p style="font-size: 8pt; text-align: center;">Documento gerado automaticamente. Extinçor, {{dataIntervencao}}.</p>
+    </div>
+
+</body>
+</html>
