@@ -66,9 +66,25 @@ module.exports = async function (context, queueItem) {
         await blockBlobClient.upload(pdfBuffer, pdfBuffer.length);
         context.log(`[JOB ${reportId}] Sucesso. URL: ${blockBlobClient.url}`);
         
-    } catch (error) {
-        context.error(`[JOB Error] Erro de processamento:`, error.message);
-        // Lança o erro para que o Azure Queue Storage tente novamente processar a mensagem
-        throw error; 
-    }
+    }  catch (error) {
+        context.error(`[JOB Error] Erro de processamento:`, error.message);
+        
+        // ** DEEPER AXIOS DEBUG **
+        if (error.response) {
+            // O servidor Gotenberg respondeu com um status de erro (ex: 400, 500)
+            context.error(`[AXIOS] Erro de Resposta (Status: ${error.response.status}):`, error.response.data.toString());
+        } else if (error.request) {
+            // O pedido foi feito, mas não houve resposta (timeout, rede)
+            context.error(`[AXIOS] Erro de Rede/Timeout. Não houve resposta do Gotenberg.`);
+        } else {
+            // Algo mais na configuração do Axios falhou
+            context.error(`[AXIOS] Erro de Configuração:`, error.message);
+        }
+        // ** FIM DO DEEPER AXIOS DEBUG **
+
+        // Lança o erro para que o Azure Queue Storage tente novamente processar a mensagem
+        throw error; 
+    }
 };
+
+
