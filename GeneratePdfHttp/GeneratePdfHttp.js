@@ -1,5 +1,5 @@
 // GeneratePdfHttp/GeneratePdfHttp.js
-// Azure Functions Node.js v4 – Queue Trigger
+// Azure Functions Node.js v4 – Queue Trigger (robusto p/ payload "flat" do Power Apps)
 
 const { app } = require("@azure/functions");
 const axios = require("axios");
@@ -10,19 +10,42 @@ const { BlobServiceClient } = require("@azure/storage-blob");
 const FormData = require("form-data");
 
 // ENV
-const GOTENBERG_URL = process.env.GOTENBERG_URL; // .../forms/chromium/convert/html
+const GOTENBERG_URL = process.env.GOTENBERG_URL; // ex: https://.../forms/chromium/convert/html
 const AZURE_STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING;
 const CONTAINER_NAME = "pdf-reports";
 
-// Storage queue connection name (App Setting)
-const QUEUE_CONNECTION = "PDF_QUEUE_STORAGE";
-const QUEUE_NAME = "pdf-generation-jobs";
+// Queue trigger binding
+const QUEUE_CONNECTION = process.env.PDF_QUEUE_CONNECTION || "PDF_QUEUE_STORAGE"; // App Setting com connection string completa
+const QUEUE_NAME = process.env.PDF_QUEUE_NAME || "pdf-generation-jobs";
 
-// Helper: parse seguro do payload
+// Helpers
 function parseQueueMessage(msg) {
   if (typeof msg === "string") return JSON.parse(msg);
   if (Buffer.isBuffer(msg)) return JSON.parse(msg.toString("utf8"));
-  return msg; // já objeto
+  return msg; // já objeto (menos comum)
+}
+
+function safeString(v) {
+  if (v === null || v === undefined) return "";
+  return String(v);
+}
+
+function normalizeList(arrOrNull) {
+  // Esperamos: [{t:"..."}, ...] (como no teu Power Fx)
+  // Aceitamos: ["...", ...] também.
+  if (!arrOrNull) return [];
+  if (!Array.isArray(arrOrNull)) return [];
+
+  return arrOrNull
+    .map((x) => {
+      if (typeof x === "string") return x.trim();
+      if (x && typeof x === "object") {
+        if (typeof x.t === "string") return x.t.trim();
+        if (typeof x.Value === "string") return x.Value.trim(); // fallback p/ payload antigo
+      }
+      return "";
+    })
+    .filter((s) => s.length > 0);
 }
 
 app.storageQueue("GeneratePdfFromQueue", {
@@ -30,84 +53,132 @@ app.storageQueue("GeneratePdfFromQueue", {
   connection: QUEUE_CONNECTION,
 
   handler: async (queueItem, context) => {
-    context.log("Queue trigger recebido");
+    context.log(`Queue trigger recebido. queue=${QUEUE_NAME}`);
 
-    // Guardrails
+    // Guardrails de ENV
     if (!GOTENBERG_URL || !AZURE_STORAGE_CONNECTION_STRING) {
-      context.log("ERRO: Variáveis de ambiente em falta");
+      context.log(
+        "ERRO: Missing GOTENBERG_URL or AZURE_STORAGE_CONNECTION_STRING (App Settings)."
+      );
       throw new Error("Missing GOTENBERG_URL or AZURE_STORAGE_CONNECTION_STRING");
-      // throw => retry automático + poison queue se falhar
     }
 
-const payload = parseQueueMessage(queueItem) || {};
+    // Parse payload
+    let payload;
+    try {
+      payload = parseQueueMessage(queueItem) || {};
+    } catch (e) {
+      context.log(`ERRO: JSON inválido na queue: ${e.message}`);
+      throw new Error("Invalid JSON in queue message");
+    }
 
-// Aceitar payload antigo e novo
-const data = payload.data ?? payload;
+    // Aceitar payload "flat" OU payload antigo com "data"
+    const data = payload.data ?? payload;
 
-// reportId pode vir direto ou dentro do header
-const reportId =
-  payload.reportId ??
-  payload.header?.reportNumber;
+    // reportId: obrigatório
+    const reportId = payload.reportId ?? payload.header?.reportNumber;
+    if (!reportId) {
+      context.log("ERRO: payload sem reportId (nem header.reportNumber).");
+      throw new Error("Invalid queue message: missing reportId");
+    }
 
-if (!reportId) {
-  context.log("ERRO: payload sem reportId");
-  throw new Error("Invalid queue message: missing reportId");
-}
+    // Normalizar campos esperados no HTML
+    const viewModel = {
+      reportId: safeString(reportId),
 
-const logoUrl = payload.logoUrl ?? data.logoUrl ?? "";
+      header: {
+        reportNumber: safeString(data.header?.reportNumber ?? reportId),
+        date: safeString(data.header?.date),
+      },
 
-context.log(`A gerar PDF para reportId=${reportId}`);
+      cliente: {
+        nif: safeString(data.cliente?.nif),
+        nome: safeString(data.cliente?.nome),
+        morada: safeString(data.cliente?.morada),
+        email: safeString(data.cliente?.email),
+      },
 
+      relatorio: {
+        tipo: safeString(data.relatorio?.tipo),
+        area: safeString(data.relatorio?.area),
+        descricao: safeString(data.relatorio?.descricao),
+        observacoes: safeString(data.relatorio?.observacoes), // pode ser ""
+        situacaoFinal: safeString(data.relatorio?.situacaoFinal),
+      },
 
-    context.log(`A gerar PDF para reportId=${reportId}`);
+      // listas (para Mustache: {{#maoObra}}<li>{{.}}</li>{{/maoObra}})
+      maoObra: normalizeList(data.maoObra),
+      material: normalizeList(data.material),
+    };
 
-    // 1) Gerar HTML
+    // Logs úteis (sem despejar base64)
+    try {
+      const raw =
+        typeof queueItem === "string" ? queueItem : JSON.stringify(queueItem);
+      context.log(`Queue item size (chars): ${raw.length}`);
+    } catch {
+      // ignore
+    }
+    context.log(`A gerar PDF para reportId=${viewModel.reportId}`);
+
+    // 1) Ler template HTML (Mustache)
     const templatePath = path.join(__dirname, "Preventiva.html");
     if (!fs.existsSync(templatePath)) {
-      throw new Error("Preventiva.html não encontrado no deploy");
+      context.log(`ERRO: Preventiva.html não encontrado em: ${templatePath}`);
+      throw new Error("Preventiva.html not found in deployment");
     }
 
     const htmlTemplate = fs.readFileSync(templatePath, "utf8");
-    const renderedHtml = mustache.render(htmlTemplate, {
-      reportId,
-      logoUrl,
-      ...data
-    });
+    const renderedHtml = mustache.render(htmlTemplate, viewModel);
 
     // 2) HTML → PDF (Gotenberg)
     const form = new FormData();
     form.append("files", Buffer.from(renderedHtml, "utf8"), {
       filename: "index.html",
-      contentType: "text/html"
+      contentType: "text/html",
     });
 
-    const gotenbergResponse = await axios.post(GOTENBERG_URL, form, {
-      responseType: "arraybuffer",
-      headers: form.getHeaders(),
-      timeout: 120000,
-      maxBodyLength: Infinity,
-      maxContentLength: Infinity
-    });
+    let pdfBuffer;
+    try {
+      const gotenbergResponse = await axios.post(GOTENBERG_URL, form, {
+        responseType: "arraybuffer",
+        headers: form.getHeaders(),
+        timeout: 120000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      });
 
-    const pdfBuffer = Buffer.from(gotenbergResponse.data);
+      pdfBuffer = Buffer.from(gotenbergResponse.data);
+    } catch (err) {
+      const status = err?.response?.status;
+      const details =
+        err?.response?.data
+          ? Buffer.from(err.response.data).toString("utf8").slice(0, 1000)
+          : err?.message;
+
+      context.log(`ERRO GOTENBERG: status=${status || "N/A"} details=${details}`);
+      throw new Error(`Gotenberg failed: ${status || "unknown"}`);
+    }
 
     // 3) Upload para Blob Storage
-    const blobServiceClient =
-      BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
+    try {
+      const blobServiceClient =
+        BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
 
-    const containerClient =
-      blobServiceClient.getContainerClient(CONTAINER_NAME);
+      const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
+      await containerClient.createIfNotExists();
 
-    await containerClient.createIfNotExists();
+      const blobName = `relatorios/${viewModel.reportId}.pdf`;
+      const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
-    const blobName = `relatorios/${reportId}.pdf`;
-    const blockBlobClient =
-      containerClient.getBlockBlobClient(blobName);
+      await blockBlobClient.uploadData(pdfBuffer, {
+        blobHTTPHeaders: { blobContentType: "application/pdf" },
+      });
 
-    await blockBlobClient.uploadData(pdfBuffer, {
-      blobHTTPHeaders: { blobContentType: "application/pdf" }
-    });
-
-    context.log(`PDF criado com sucesso: ${blockBlobClient.url}`);
-  }
+      context.log(`PDF criado com sucesso: ${blockBlobClient.url}`);
+    } catch (err) {
+      context.log(`ERRO BLOB UPLOAD: ${err?.message || String(err)}`);
+      throw new Error("Blob upload failed");
+    }
+  },
 });
