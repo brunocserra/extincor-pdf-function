@@ -6,7 +6,7 @@
   "scripts": {
     "start": "func start"
   },
-  "dependencies": {
+"dependencies": {
     "@azure/functions": "^4.0.0", // Esta deve estar presente
     "axios": "^1.6.8",
     "mustache": "^4.2.0",
