@@ -1,2 +1,1 @@
-require("./GeneratePdfHttp/index.js");
-
+require("./GeneratePdfHttp/GeneratePdfHttp.js");
