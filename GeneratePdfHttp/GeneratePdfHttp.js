@@ -15,7 +15,7 @@ const AZURE_STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STR
 const CONTAINER_NAME = "pdf-reports";
 
 // Storage queue connection name (App Setting)
-const QUEUE_CONNECTION = "AzureWebJobsStorage";
+const QUEUE_CONNECTION = "PDF_QUEUE_STORAGE";
 const QUEUE_NAME = "pdf-generation-jobs";
 
 // Helper: parse seguro do payload
