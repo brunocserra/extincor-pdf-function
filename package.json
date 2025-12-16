@@ -7,9 +7,10 @@
     "start": "func start"
   },
   "dependencies": {
-    "@azure/functions": "^4.0.0", 
-    "axios": "^1.6.8",
-    "mustache": "^4.2.0",
-    "@azure/storage-blob": "^12.17.0"
+    "@azure/functions": "^4.5.0",
+    "@azure/storage-blob": "^12.19.0",
+    "axios": "^1.7.0",
+    "form-data": "^4.0.0",
+    "mustache": "^4.2.0"
   }
 }
