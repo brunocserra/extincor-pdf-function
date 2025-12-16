@@ -1,1 +1,2 @@
+require("./GeneratePdfHttp/index.js");
 
