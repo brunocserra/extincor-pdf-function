@@ -1,113 +1,382 @@
 <!DOCTYPE html>
 <html lang="pt">
 <head>
-    <meta charset="UTF-8">
-    <title>Relatório de Manutenção Preventiva - {{numRelatorio}}</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            font-size: 10pt;
-            margin: 0;
-            padding: 20px;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 2px solid #0056b3;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }
-        .header img {
-            max-width: 150px;
-            height: auto;
-        }
-        .report-info, .client-info {
-            width: 48%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            display: inline-block;
-            vertical-align: top;
-        }
-        .client-info {
-            margin-left: 2%;
-        }
-        h1 {
-            color: #0056b3;
-            font-size: 14pt;
-            margin-top: 0;
-        }
-        .section-title {
-            background-color: #f0f0f0;
-            padding: 5px 10px;
-            margin-top: 20px;
-            margin-bottom: 10px;
-            border-left: 4px solid #0056b3;
-            font-weight: bold;
-        }
-        .content p {
-            margin: 5px 0;
-        }
-        .pre-formatted {
-            background-color: #f9f9f9;
-            padding: 10px;
-            border: 1px dashed #ccc;
-            white-space: pre-wrap; /* Mantém a formatação de <br> e \n */
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Relatório de Intervenção</title>
+
+  <style>
+    :root{
+      --ink:#1f2d3d;
+      --muted:#6b7280;
+      --brand:#0b3a67;
+      --brand-2:#0ea5e9;
+      --paper:#ffffff;
+      --bg:#f4f6f9;
+      --line:#e5e7eb;
+      --card:#ffffff;
+      --shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+      --radius: 12px;
+    }
+
+    *{ box-sizing:border-box; }
+    html{
+      width:210mm;
+      margin:0 auto;
+      background:#d1d5db;
+      display:flex;
+      justify-content:center;
+    }
+
+    body{
+      width:190mm;
+      margin:0;
+      padding:12mm 10mm;
+      background:var(--bg);
+      color:var(--ink);
+      font-family:"Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      font-size:14px;
+      line-height:1.45;
+    }
+
+    /* Header */
+    .header{
+      background:var(--paper);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+
+    .header-top{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:14px 16px;
+      gap:16px;
+    }
+
+    .logo{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      min-width: 130px;
+    }
+
+    .logo img{
+      height:56px;
+      width:auto;
+      object-fit:contain;
+    }
+
+    .title-block{
+      text-align:right;
+      flex:1;
+      min-width: 240px;
+    }
+
+    .title{
+      font-size:18px;
+      font-weight:700;
+      color:var(--brand);
+      letter-spacing:0.2px;
+      margin-bottom:4px;
+    }
+
+    .meta{
+      display:flex;
+      justify-content:flex-end;
+      gap:14px;
+      flex-wrap:wrap;
+      color:var(--muted);
+      font-size:12.5px;
+    }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:4px 10px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      background:#f8fafc;
+      color:#111827;
+      font-weight:600;
+    }
+
+    .header-bar{
+      height:6px;
+      background:linear-gradient(90deg, var(--brand), var(--brand-2));
+    }
+
+    /* Content */
+    .content{ margin-top:16px; }
+
+    .section{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:14px 16px;
+      margin:12px 0;
+      page-break-inside: avoid;
+    }
+
+    .section-title{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:10px;
+      padding-bottom:8px;
+      border-bottom:1px solid var(--line);
+    }
+
+    .section-title h2{
+      margin:0;
+      font-size:14px;
+      font-weight:800;
+      letter-spacing:0.2px;
+      color:var(--ink);
+    }
+
+    .section-badge{
+      font-size:11px;
+      color:var(--muted);
+      border:1px solid var(--line);
+      padding:4px 8px;
+      border-radius:999px;
+      background:#f8fafc;
+      white-space:nowrap;
+    }
+
+    .grid-2{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px 18px;
+    }
+
+    .field{
+      display:flex;
+      gap:8px;
+      align-items:flex-start;
+    }
+
+    .label{
+      color:var(--muted);
+      min-width: 74px;
+      font-weight:600;
+    }
+
+    .value{
+      color:#111827;
+      font-weight:600;
+    }
+
+    .value.normal{
+      font-weight:500;
+      color:#111827;
+    }
+
+    .divider{
+      height:1px;
+      background:var(--line);
+      margin:12px 0;
+    }
+
+    .block-title{
+      font-weight:800;
+      margin:0 0 6px 0;
+      color:#111827;
+      font-size:13px;
+    }
+
+    .text{
+      white-space:pre-wrap;
+      color:#111827;
+      font-weight:500;
+    }
+
+    .two-columns{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:18px;
+      align-items:start;
+    }
+
+    .list{
+      margin:0;
+      padding-left:16px;
+      color:#111827;
+      font-weight:500;
+    }
+
+    .list li{
+      margin:4px 0;
+    }
+
+    /* Footer */
+    .footer{
+      margin-top:16px;
+      text-align:center;
+      color:#e5e7eb;
+      background:var(--brand);
+      border-radius:var(--radius);
+      padding:10px 12px;
+      font-size:11.5px;
+      border:1px solid rgba(255,255,255,0.15);
+    }
+
+    /* A4 */
+    @page{
+      size:A4;
+      margin:15mm;
+    }
+
+    @media print{
+      html, body{
+        width:210mm;
+        background:#fff;
+      }
+      body{ padding:0; }
+      .section, .header{ box-shadow:none; }
+      .footer{
+        position:fixed;
+        left:0;
+        right:0;
+        bottom:0;
+        border-radius:0;
+      }
+    }
+  </style>
 </head>
+
 <body>
 
-    <div class="header">
-        <img src="{{logoUrl}}" alt="Logo da Empresa"> 
-        <h2>RELATÓRIO TÉCNICO</h2>
-    </div>
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-top">
+      <div class="logo">
+        <img src="{{logoUrl}}" alt="Logo" />
+      </div>
 
-    <div class="report-info">
-        <h1>Detalhes do Serviço</h1>
-        <p><strong>Nº do Relatório:</strong> {{numRelatorio}}</p>
-        <p><strong>Data da Intervenção:</strong> {{dataIntervencao}}</p>
-        <p><strong>Tipo de Intervenção:</strong> {{tipoIntervencao}}</p>
-        <p><strong>Área de Intervenção:</strong> {{areaIntervencao}}</p>
-    </div>
-
-    <div class="client-info">
-        <h1>Dados do Cliente</h1>
-        <p><strong>Nome:</strong> {{clienteNome}}</p>
-        <p><strong>NIF:</strong> {{clienteNif}}</p>
-        <p><strong>Morada:</strong> {{morada}}</p>
-        <p><strong>E-mail:</strong> {{clienteEmail}}</p>
-    </div>
-    
-    <div style="clear: both;"></div>
-
-    <div class="section-title">Relatório e Situação Final</div>
-    <div class="content">
-        <p><strong>Relatório Técnico:</strong></p>
-        <div class="pre-formatted">{{relatorioTecnico}}</div>
-        <p style="margin-top: 15px;"><strong>Situação Final:</strong> <span>{{situacaoFinal}}</span></p>
-    </div>
-
-    <div class="section-title">Recursos Utilizados</div>
-    <div class="content">
-        <p><strong>Mão de Obra:</strong></p>
-        <div class="pre-formatted">{{{maoDeObra}}}</div>
-
-        <div class="pre-formatted">{{{material}}}</div>
-    </div>
-    
-    <div class="section-title">Observações</div>
-    <div class="content">
-        <div class="pre-formatted">
-            {{{observacoesCliente}}}
+      <div class="title-block">
+        <div class="title">Relatório de Intervenção</div>
+        <div class="meta">
+          <span class="pill">Nº Relatório: {{header.reportNumber}}</span>
+          <span class="pill">Data: {{header.date}}</span>
         </div>
+      </div>
+    </div>
+    <div class="header-bar"></div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- CLIENTE -->
+    <div class="section">
+      <div class="section-title">
+        <h2>Informações do Cliente</h2>
+        <span class="section-badge">Dados de faturação</span>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <div class="label">NIF</div>
+          <div class="value">{{cliente.nif}}</div>
+        </div>
+
+        <div class="field">
+          <div class="label">E-mail</div>
+          <div class="value normal">{{cliente.email}}</div>
+        </div>
+
+        <div class="field" style="grid-column: 1 / -1;">
+          <div class="label">Nome</div>
+          <div class="value normal">{{cliente.nome}}</div>
+        </div>
+
+        <div class="field" style="grid-column: 1 / -1;">
+          <div class="label">Morada</div>
+          <div class="value normal">{{cliente.morada}}</div>
+        </div>
+      </div>
     </div>
 
-    <div style="margin-top: 50px; border-top: 1px solid #ccc; padding-top: 10px;">
-        <p style="font-size: 8pt; text-align: center;">Documento gerado automaticamente. Extinçor, {{dataIntervencao}}.</p>
+    <!-- RELATÓRIO TÉCNICO -->
+    <div class="section" style="page-break-inside:auto;">
+      <div class="section-title">
+        <h2>Relatório Técnico</h2>
+        <span class="section-badge">Intervenção</span>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <div class="label">Tipo</div>
+          <div class="value normal">{{relatorio.tipo}}</div>
+        </div>
+        <div class="field">
+          <div class="label">Área</div>
+          <div class="value normal">{{relatorio.area}}</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="block-title">Descrição da intervenção</div>
+      <div class="text">{{relatorio.descricao}}</div>
+
+      {{#relatorio.observacoes}}
+      <div class="divider"></div>
+      <div class="block-title">Observações</div>
+      <div class="text">{{relatorio.observacoes}}</div>
+      {{/relatorio.observacoes}}
+
+      <div class="divider"></div>
+
+      <div class="field">
+        <div class="label">Situação final</div>
+        <div class="value normal">{{relatorio.situacaoFinal}}</div>
+      </div>
     </div>
+
+    <!-- MÃO DE OBRA E MATERIAL -->
+    <div class="section" style="page-break-inside:auto;">
+      <div class="section-title">
+        <h2>Mão de Obra e Material</h2>
+        <span class="section-badge">Detalhe</span>
+      </div>
+
+      <div class="two-columns">
+        <div>
+          <div class="block-title">Mão de Obra</div>
+          <ul class="list">
+            {{#maoObra}}
+              <li>{{.}}</li>
+            {{/maoObra}}
+          </ul>
+        </div>
+
+        {{#material}}
+        <div>
+          <div class="block-title">Material</div>
+          <ul class="list">
+            {{#material}}
+              <li>{{.}}</li>
+            {{/material}}
+          </ul>
+        </div>
+        {{/material}}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    Documento gerado automaticamente. Para mais informações, entre em contacto com a Extinçor.
+  </div>
 
 </body>
 </html>
