@@ -1,7 +1,8 @@
 {
+  "scriptFile": "index.js", // <-- ADICIONAR ESTA LINHA!
   "bindings": [
     {
-      "authLevel": "anonymous", // Para facilitar o teste
+      "authLevel": "anonymous",
       "type": "httpTrigger",
       "direction": "in",
       "name": "req",
