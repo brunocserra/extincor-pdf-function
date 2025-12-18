@@ -307,36 +307,32 @@
     </div>
 
     <!-- MÃO DE OBRA / MATERIAL -->
-    <div class="section">
-      <div class="section-title">
-        <h2>Mão de Obra e Material</h2>
-        <span class="section-badge">Detalhe</span>
-      </div>
+<div class="section">
+  <div class="section-title">
+    <h2>Mão de Obra e Material</h2>
+    <span class="section-badge">Detalhe</span>
+  </div>
 
-      <div class="two-columns">
-        <div>
-          <div class="block-title">Mão de Obra</div>
-          <ul class="list">
-            {{#maoObra}}
-              <li>{{t}}</li>
-            {{/maoObra}}
-          </ul>
-        </div>
-
-        {{#material}}
-        <div>
-          <div class="block-title">Material</div>
-          <ul class="list">
-            {{#material}}
-              <li>{{t}}</li>
-            {{/material}}
-          </ul>
-        </div>
-        {{/material}}
-      </div>
+  <div class="two-columns">
+    <div>
+      <div class="block-title">Mão de Obra</div>
+      <ul class="list">
+        {{#maoObra}}
+          <li>{{t}}</li>
+        {{/maoObra}}
+      </ul>
     </div>
 
+    <div>
+      <div class="block-title">Material</div>
+      <ul class="list">
+        {{#material}}
+          <li>{{t}}</li>
+        {{/material}}
+      </ul>
+    </div>
   </div>
+</div>
 
   <!-- FOOTER -->
   <div class="footer">
