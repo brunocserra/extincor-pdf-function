@@ -1,6 +1,4 @@
 // GeneratePdfHttp/GeneratePdfHttp.js
-// Azure Functions Node.js v4 – Queue Trigger (jobs) -> Gotenberg -> Blob -> Queue (results)
-
 const { app } = require("@azure/functions");
 const axios = require("axios");
 const fs = require("fs");
@@ -10,7 +8,7 @@ const { BlobServiceClient } = require("@azure/storage-blob");
 const { QueueServiceClient } = require("@azure/storage-queue");
 const FormData = require("form-data");
 
-// CONFIGURAÇÕES DE AMBIENTE (ENV)
+// CONFIGURAÇÕES DE AMBIENTE
 const GOTENBERG_URL = process.env.GOTENBERG_URL; 
 const AZURE_STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING;
 const CONTAINER_NAME = process.env.PDF_BLOB_CONTAINER || "pdf-reports";
@@ -21,6 +19,7 @@ const RESULTS_QUEUE_NAME = process.env.PDF_RESULTS_QUEUE_NAME || "pdf-results";
 const RESULTS_CONN_STR = process.env.PDF_RESULTS_CONNECTION_STRING || process.env[QUEUE_CONNECTION];
 
 // --- HELPERS ---
+
 function parseQueueMessage(msg) {
   if (typeof msg === "string") return JSON.parse(msg);
   if (Buffer.isBuffer(msg)) return JSON.parse(msg.toString("utf8"));
@@ -32,74 +31,72 @@ function safeString(v) {
   return String(v);
 }
 
+/**
+ * Nova versão da normalizeList:
+ * 1. Converte objetos ou strings em texto simples.
+ * 2. Se houver ";" no texto, divide em múltiplos itens (bullets).
+ */
 function normalizeList(arrOrNull) {
-  if (!arrOrNull || !Array.isArray(arrOrNull)) return [];
-  return arrOrNull
-    .map((x) => {
-      if (typeof x === "string") return x.trim();
-      if (x && typeof x === "object") {
-        if (typeof x.t === "string") return x.t.trim();
-        if (typeof x.Value === "string") return x.Value.trim();
+  if (!arrOrNull) return [];
+  
+  let items = [];
+  
+  // Se for uma string única (ex: vinda do Power Apps com ";")
+  if (typeof arrOrNull === "string") {
+    items = arrOrNull.split(';');
+  } 
+  // Se for um array de objetos ou strings
+  else if (Array.isArray(arrOrNull)) {
+    arrOrNull.forEach(item => {
+      // Tenta extrair o texto de várias formas comuns (propriedade 't', 'Value' ou string direta)
+      const text = typeof item === "string" ? item : (item.t || item.Value || "");
+      
+      if (text.includes(';')) {
+        items.push(...text.split(';'));
+      } else {
+        items.push(text);
       }
-      return "";
-    })
-    .filter((s) => s.length > 0);
-}
+    });
+  }
 
-function pickDataverse(payload) {
-  const dv = payload?.dataverse;
-  if (!dv || typeof dv !== "object") return null;
-  const table = safeString(dv.table).trim();
-  const rowId = safeString(dv.rowId).trim();
-  const fileColumn = safeString(dv.fileColumn).trim();
-  const fileName = safeString(dv.fileName).trim();
-  if (!table || !rowId || !fileColumn) return null;
-  return { table, rowId, fileColumn, fileName: fileName || "relatorio.pdf" };
+  // Limpa espaços em branco e remove itens vazios
+  return items.map(s => s.trim()).filter(s => s.length > 0);
 }
 
 async function sendResultMessage(resultObj, context) {
-  if (!RESULTS_CONN_STR) {
-    context.log("AVISO: RESULTS_CONN_STR vazio.");
-    return;
-  }
+  if (!RESULTS_CONN_STR) return;
   try {
     const qsc = QueueServiceClient.fromConnectionString(RESULTS_CONN_STR);
     const qc = qsc.getQueueClient(RESULTS_QUEUE_NAME);
     await qc.createIfNotExists();
     await qc.sendMessage(JSON.stringify(resultObj));
-    context.log(`Mensagem enviada para results queue: ${RESULTS_QUEUE_NAME}`);
   } catch (err) {
-    context.log(`ERRO ao enviar mensagem para results queue: ${err.message}`);
+    context.log(`Erro ao enviar resultado: ${err.message}`);
   }
 }
 
-// --- HANDLER PRINCIPAL ---
+// --- HANDLER ---
+
 app.storageQueue("GeneratePdfFromQueue", {
   queueName: QUEUE_NAME,
   connection: QUEUE_CONNECTION,
 
   handler: async (queueItem, context) => {
-    context.log(`Queue trigger recebido.`);
-
-    if (!GOTENBERG_URL || !AZURE_STORAGE_CONNECTION_STRING) {
-      throw new Error("Missing GOTENBERG_URL or AZURE_STORAGE_CONNECTION_STRING");
-    }
+    context.log(`Processando mensagem da queue...`);
 
     let payload;
     try {
       payload = parseQueueMessage(queueItem) || {};
     } catch (e) {
-      context.log(`ERRO: JSON inválido na queue.`);
       throw new Error("Invalid JSON in queue message");
     }
 
     const data = payload.data ?? payload;
     const reportId = payload.reportId ?? payload.header?.reportNumber;
-    if (!reportId) throw new Error("Invalid queue message: missing reportId");
+    
+    if (!reportId) throw new Error("Missing reportId");
 
-    const dataverse = pickDataverse(payload);
-
-    // MONTAGEM DO VIEWMODEL PARA O MUSTACHE
+    // Construção do ViewModel para o Mustache
     const viewModel = {
       reportId: safeString(reportId),
       header: {
@@ -119,37 +116,29 @@ app.storageQueue("GeneratePdfFromQueue", {
         observacoes: safeString(data.relatorio?.observacoes),
         situacaoFinal: safeString(data.relatorio?.situacaoFinal),
       },
+      
+      // Listas normalizadas para virarem bullets
       maoObra: normalizeList(data.maoObra),
       material: normalizeList(data.material),
       
-      // FOTOS: Garante que é array e cria flag booleana para o HTML
+      // Fotos e Flag de controlo para o HTML
       fotos: Array.isArray(data.fotos) ? data.fotos : [],
       temFotos: Array.isArray(data.fotos) && data.fotos.length > 0
     };
 
-    context.log(`A gerar PDF para reportId=${viewModel.reportId}. Fotos: ${viewModel.fotos.length}`);
-
-    // 1) Template HTML
+    // 1. Carregar e Renderizar HTML
     const templatePath = path.join(__dirname, "Preventiva.html");
-    if (!fs.existsSync(templatePath)) {
-      const fail = {
-        version: 1, reportId: viewModel.reportId, status: "FAILED", createdAtUtc: new Date().toISOString(),
-        error: { code: "TEMPLATE_NOT_FOUND", message: "Preventiva.html não encontrado no deploy" }
-      };
-      await sendResultMessage(fail, context);
-      throw new Error("Preventiva.html not found");
-    }
-
     const htmlTemplate = fs.readFileSync(templatePath, "utf8");
+    
     let renderedHtml;
     try {
       renderedHtml = mustache.render(htmlTemplate, viewModel);
     } catch (err) {
-      context.log(`ERRO NO MUSTACHE: ${err.message}`);
+      context.log(`Erro no Mustache: ${err.message}`);
       throw err;
     }
 
-    // 2) HTML -> PDF (Gotenberg)
+    // 2. Enviar para o Gotenberg
     const form = new FormData();
     form.append("files", Buffer.from(renderedHtml, "utf8"), {
       filename: "index.html",
@@ -158,62 +147,35 @@ app.storageQueue("GeneratePdfFromQueue", {
 
     let pdfBuffer;
     try {
-      const gotenbergResponse = await axios.post(GOTENBERG_URL, form, {
+      const response = await axios.post(GOTENBERG_URL, form, {
         responseType: "arraybuffer",
         headers: form.getHeaders(),
         timeout: 120000,
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity,
       });
-      pdfBuffer = Buffer.from(gotenbergResponse.data);
+      pdfBuffer = Buffer.from(response.data);
     } catch (err) {
-      const fail = {
-        version: 1, reportId: viewModel.reportId, status: "FAILED", createdAtUtc: new Date().toISOString(),
-        error: { code: "GOTENBERG_FAILED", message: err.message }
-      };
-      await sendResultMessage(fail, context);
+      context.log(`Erro Gotenberg: ${err.message}`);
       throw err;
     }
 
-    // 3) Upload Blob
-    let blobUrl = "";
+    // 3. Upload para o Azure Blob
     const blobName = `${BLOB_PREFIX}${viewModel.reportId}.pdf`.replace(/\/{2,}/g, "/");
+    const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
+    const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
+    await containerClient.createIfNotExists();
+    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
-    try {
-      const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
-      const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
-      await containerClient.createIfNotExists();
-      const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    await blockBlobClient.uploadData(pdfBuffer, {
+      blobHTTPHeaders: { blobContentType: "application/pdf" },
+    });
 
-      await blockBlobClient.uploadData(pdfBuffer, {
-        blobHTTPHeaders: { blobContentType: "application/pdf" },
-      });
-      blobUrl = blockBlobClient.url;
-    } catch (err) {
-      const fail = {
-        version: 1, reportId: viewModel.reportId, status: "FAILED", createdAtUtc: new Date().toISOString(),
-        error: { code: "BLOB_UPLOAD_FAILED", message: err.message }
-      };
-      await sendResultMessage(fail, context);
-      throw err;
-    }
-
-    // 4) Sucesso
-    const ok = {
-      version: 1,
+    // 4. Notificar Sucesso
+    await sendResultMessage({
       reportId: viewModel.reportId,
       status: "SUCCEEDED",
-      createdAtUtc: new Date().toISOString(),
-      source: dataverse ? { dataverse } : undefined,
-      pdf: { 
-        containerName: CONTAINER_NAME, 
-        blobName, 
-        blobUrl, 
-        contentType: "application/pdf", 
-        sizeBytes: pdfBuffer.length 
-      },
-    };
-    await sendResultMessage(ok, context);
-    context.log(`PDF gerado e enviado com sucesso.`);
+      pdfUrl: blockBlobClient.url
+    }, context);
+
+    context.log(`PDF gerado com sucesso para o relatório ${viewModel.reportId}`);
   },
 });
