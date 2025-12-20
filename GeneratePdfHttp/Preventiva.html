@@ -58,10 +58,10 @@
     }
 
     .logo-container img {
-  max-height: 55px; /* Ajuste este valor conforme necessário */
-  width: auto;
-  display: block;
-}
+      max-height: 55px;
+      width: auto;
+      display: block;
+    }
 
     .title-block{
       text-align:right;
@@ -138,6 +138,28 @@
       display:grid;
       grid-template-columns:1fr 1fr;
       gap:12px 18px;
+    }
+
+    /* GRELHA DE FOTOS */
+    .photo-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .photo-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f8fafc;
+    }
+
+    .photo-item img {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+      display: block;
     }
 
     .field{
@@ -228,13 +250,11 @@
 
 <body>
 
-  <!-- HEADER -->
-<div class="header">
+  <div class="header">
     <div class="header-top">
       <div class="logo-container">
         <img src="https://extincorpdfsstore.blob.core.windows.net/assetsextincor/extlogo" 
-             alt="Extinçor Logo" 
-             style="max-height: 60px; width: auto; display: block;">
+             alt="Extinçor Logo">
       </div>
 
       <div class="title-block">
@@ -248,10 +268,8 @@
     <div class="header-bar"></div>
   </div>
 
-  <!-- CONTENT -->
   <div class="content">
 
-    <!-- CLIENTE -->
     <div class="section">
       <div class="section-title">
         <h2>Informações do Cliente</h2>
@@ -281,7 +299,6 @@
       </div>
     </div>
 
-    <!-- RELATÓRIO -->
     <div class="section">
       <div class="section-title">
         <h2>Relatório Técnico</h2>
@@ -318,35 +335,51 @@
       </div>
     </div>
 
-    <!-- MÃO DE OBRA / MATERIAL -->
-<div class="section">
-  <div class="section-title">
-    <h2>Mão de Obra e Material</h2>
-    <span class="section-badge">Detalhe</span>
-  </div>
+    <div class="section">
+      <div class="section-title">
+        <h2>Mão de Obra e Material</h2>
+        <span class="section-badge">Detalhe</span>
+      </div>
 
-  <div class="two-columns">
-    <div>
-      <div class="block-title">Mão de Obra</div>
-      <ul class="list">
-        {{#maoObra}}
-          <li>{{.}}</li>
-        {{/maoObra}}
-      </ul>
+      <div class="two-columns">
+        <div>
+          <div class="block-title">Mão de Obra</div>
+          <ul class="list">
+            {{#maoObra}}
+              <li>{{t}}</li>
+            {{/maoObra}}
+          </ul>
+        </div>
+
+        <div>
+          <div class="block-title">Material</div>
+          <ul class="list">
+            {{#material}}
+              <li>{{t}}</li>
+            {{/material}}
+          </ul>
+        </div>
+      </div>
     </div>
 
-    <div>
-      <div class="block-title">Material</div>
-      <ul class="list">
-        {{#material}}
-          <li>{{.}}</li>
-        {{/material}}
-      </ul>
+    {{#if fotos.length}}
+    <div class="section">
+      <div class="section-title">
+        <h2>Evidências Fotográficas</h2>
+        <span class="section-badge">Anexos</span>
+      </div>
+      <div class="photo-grid">
+        {{#each fotos}}
+        <div class="photo-item">
+          <img src="{{.}}" alt="Registo Fotográfico">
+        </div>
+        {{/each}}
+      </div>
     </div>
-  </div>
-</div>
+    {{/if}}
 
-  <!-- FOOTER -->
+  </div>
+
   <div class="footer">
     Documento gerado automaticamente. Para mais informações, entre em contacto com a Extinçor.
   </div>
