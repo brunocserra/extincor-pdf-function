@@ -10,7 +10,7 @@ const { BlobServiceClient } = require("@azure/storage-blob");
 const { QueueServiceClient } = require("@azure/storage-queue");
 const FormData = require("form-data");
 
-// ENV
+// CONFIGURAÇÕES DE AMBIENTE (ENV)
 const GOTENBERG_URL = process.env.GOTENBERG_URL; 
 const AZURE_STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING;
 const CONTAINER_NAME = process.env.PDF_BLOB_CONTAINER || "pdf-reports";
@@ -20,7 +20,7 @@ const QUEUE_NAME = process.env.PDF_QUEUE_NAME || "pdf-generation-jobs";
 const RESULTS_QUEUE_NAME = process.env.PDF_RESULTS_QUEUE_NAME || "pdf-results";
 const RESULTS_CONN_STR = process.env.PDF_RESULTS_CONNECTION_STRING || process.env[QUEUE_CONNECTION];
 
-// --- HELPERS ORIGINAIS (MANTIDOS) ---
+// --- HELPERS ---
 function parseQueueMessage(msg) {
   if (typeof msg === "string") return JSON.parse(msg);
   if (Buffer.isBuffer(msg)) return JSON.parse(msg.toString("utf8"));
@@ -62,11 +62,15 @@ async function sendResultMessage(resultObj, context) {
     context.log("AVISO: RESULTS_CONN_STR vazio.");
     return;
   }
-  const qsc = QueueServiceClient.fromConnectionString(RESULTS_CONN_STR);
-  const qc = qsc.getQueueClient(RESULTS_QUEUE_NAME);
-  await qc.createIfNotExists();
-  await qc.sendMessage(JSON.stringify(resultObj));
-  context.log(`Mensagem enviada para results queue: ${RESULTS_QUEUE_NAME}`);
+  try {
+    const qsc = QueueServiceClient.fromConnectionString(RESULTS_CONN_STR);
+    const qc = qsc.getQueueClient(RESULTS_QUEUE_NAME);
+    await qc.createIfNotExists();
+    await qc.sendMessage(JSON.stringify(resultObj));
+    context.log(`Mensagem enviada para results queue: ${RESULTS_QUEUE_NAME}`);
+  } catch (err) {
+    context.log(`ERRO ao enviar mensagem para results queue: ${err.message}`);
+  }
 }
 
 // --- HANDLER PRINCIPAL ---
@@ -75,8 +79,7 @@ app.storageQueue("GeneratePdfFromQueue", {
   connection: QUEUE_CONNECTION,
 
   handler: async (queueItem, context) => {
-    const startedAtUtc = new Date().toISOString();
-    context.log(`Queue trigger recebido. queue=${QUEUE_NAME}`);
+    context.log(`Queue trigger recebido.`);
 
     if (!GOTENBERG_URL || !AZURE_STORAGE_CONNECTION_STRING) {
       throw new Error("Missing GOTENBERG_URL or AZURE_STORAGE_CONNECTION_STRING");
@@ -86,6 +89,7 @@ app.storageQueue("GeneratePdfFromQueue", {
     try {
       payload = parseQueueMessage(queueItem) || {};
     } catch (e) {
+      context.log(`ERRO: JSON inválido na queue.`);
       throw new Error("Invalid JSON in queue message");
     }
 
@@ -95,7 +99,7 @@ app.storageQueue("GeneratePdfFromQueue", {
 
     const dataverse = pickDataverse(payload);
 
-    // viewModel para o Mustache (INCLUINDO AS FOTOS)
+    // MONTAGEM DO VIEWMODEL PARA O MUSTACHE
     const viewModel = {
       reportId: safeString(reportId),
       header: {
@@ -117,8 +121,10 @@ app.storageQueue("GeneratePdfFromQueue", {
       },
       maoObra: normalizeList(data.maoObra),
       material: normalizeList(data.material),
-      // Adicionado: suporte para o array de URLs das fotos
-      fotos: Array.isArray(data.fotos) ? data.fotos : []
+      
+      // FOTOS: Garante que é array e cria flag booleana para o HTML
+      fotos: Array.isArray(data.fotos) ? data.fotos : [],
+      temFotos: Array.isArray(data.fotos) && data.fotos.length > 0
     };
 
     context.log(`A gerar PDF para reportId=${viewModel.reportId}. Fotos: ${viewModel.fotos.length}`);
@@ -128,14 +134,20 @@ app.storageQueue("GeneratePdfFromQueue", {
     if (!fs.existsSync(templatePath)) {
       const fail = {
         version: 1, reportId: viewModel.reportId, status: "FAILED", createdAtUtc: new Date().toISOString(),
-        error: { code: "TEMPLATE_NOT_FOUND", message: "Preventiva.html não encontrado" }
+        error: { code: "TEMPLATE_NOT_FOUND", message: "Preventiva.html não encontrado no deploy" }
       };
       await sendResultMessage(fail, context);
       throw new Error("Preventiva.html not found");
     }
 
     const htmlTemplate = fs.readFileSync(templatePath, "utf8");
-    const renderedHtml = mustache.render(htmlTemplate, viewModel);
+    let renderedHtml;
+    try {
+      renderedHtml = mustache.render(htmlTemplate, viewModel);
+    } catch (err) {
+      context.log(`ERRO NO MUSTACHE: ${err.message}`);
+      throw err;
+    }
 
     // 2) HTML -> PDF (Gotenberg)
     const form = new FormData();
@@ -193,8 +205,15 @@ app.storageQueue("GeneratePdfFromQueue", {
       status: "SUCCEEDED",
       createdAtUtc: new Date().toISOString(),
       source: dataverse ? { dataverse } : undefined,
-      pdf: { containerName: CONTAINER_NAME, blobName, blobUrl, contentType: "application/pdf", sizeBytes: pdfBuffer.length },
+      pdf: { 
+        containerName: CONTAINER_NAME, 
+        blobName, 
+        blobUrl, 
+        contentType: "application/pdf", 
+        sizeBytes: pdfBuffer.length 
+      },
     };
     await sendResultMessage(ok, context);
+    context.log(`PDF gerado e enviado com sucesso.`);
   },
 });
