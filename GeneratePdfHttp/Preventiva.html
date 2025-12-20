@@ -346,7 +346,7 @@
           <div class="block-title">Mão de Obra</div>
           <ul class="list">
             {{#maoObra}}
-              <li>{{t}}</li>
+              <li>{{.}}</li>
             {{/maoObra}}
           </ul>
         </div>
@@ -355,28 +355,29 @@
           <div class="block-title">Material</div>
           <ul class="list">
             {{#material}}
-              <li>{{t}}</li>
+              <li>{{.}}</li>
             {{/material}}
           </ul>
         </div>
       </div>
     </div>
 
-    {{#if fotos.length}}
+    {{#fotos.0}}
     <div class="section">
       <div class="section-title">
         <h2>Evidências Fotográficas</h2>
         <span class="section-badge">Anexos</span>
       </div>
       <div class="photo-grid">
-        {{#each fotos}}
+        {{#fotos}}
         <div class="photo-item">
           <img src="{{.}}" alt="Registo Fotográfico">
         </div>
-        {{/each}}
+        {{/fotos}}
       </div>
     </div>
     {{/if}}
+    {{/fotos.0}}
 
   </div>
 
