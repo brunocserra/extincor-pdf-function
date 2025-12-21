@@ -33,16 +33,12 @@ function safeString(v) {
 
 function normalizeList(arrOrNull) {
   if (!arrOrNull) return [];
-  
   let items = [];
-  
   if (typeof arrOrNull === "string") {
     items = arrOrNull.split(';');
-  } 
-  else if (Array.isArray(arrOrNull)) {
+  } else if (Array.isArray(arrOrNull)) {
     arrOrNull.forEach(item => {
-      const text = typeof item === "string" ? item : (item.t || item.Value || "");
-      
+      const text = typeof item === "string" ? item : (item.Value || item.t || item.Result || "");
       if (text.includes(';')) {
         items.push(...text.split(';'));
       } else {
@@ -50,34 +46,21 @@ function normalizeList(arrOrNull) {
       }
     });
   }
-
   return items.map(s => s.trim()).filter(s => s.length > 0);
 }
 
 async function sendResultMessage(resultObj, context) {
-  // Tenta usar a string específica de resultados ou a geral da queue
   const connectionString = RESULTS_CONN_STR || process.env[QUEUE_CONNECTION];
   const queueName = RESULTS_QUEUE_NAME || "pdf-results";
-
-  if (!connectionString) {
-    context.log("ERRO: Nenhuma String de Ligação encontrada para a Queue de resultados.");
-    return;
-  }
-
+  if (!connectionString) return;
   try {
     const qsc = QueueServiceClient.fromConnectionString(connectionString);
     const qc = qsc.getQueueClient(queueName);
-    
-    // Garante que a fila existe antes de enviar
     await qc.createIfNotExists();
-    
-    // Envia a mensagem convertida para Base64 (necessário para o Power Automate ler bem)
     const messageText = JSON.stringify(resultObj);
     await qc.sendMessage(Buffer.from(messageText).toString('base64'));
-    
-    context.log(`Mensagem enviada com sucesso para a fila: ${queueName}`);
   } catch (err) {
-    context.log(`Erro crítico ao enviar resultado para a Queue: ${err.message}`);
+    context.log(`Erro ao enviar resultado: ${err.message}`);
   }
 }
 
@@ -102,6 +85,7 @@ app.storageQueue("GeneratePdfFromQueue", {
     
     if (!reportId) throw new Error("Missing reportId");
 
+    // Construção do ViewModel com correção para [object Object] nas fotos
     const viewModel = {
       reportId: safeString(reportId),
       header: {
@@ -123,7 +107,11 @@ app.storageQueue("GeneratePdfFromQueue", {
       },
       maoObra: normalizeList(data.maoObra),
       material: normalizeList(data.material),
-      fotos: Array.isArray(data.fotos) ? data.fotos : [],
+      
+      // CORREÇÃO: Mapeia o array de fotos para garantir que extraímos a STRING do URL
+      fotos: Array.isArray(data.fotos) 
+        ? data.fotos.map(f => (typeof f === "string" ? f : (f.Value || f.Result || "")))
+        : [],
       temFotos: Array.isArray(data.fotos) && data.fotos.length > 0
     };
 
@@ -164,22 +152,24 @@ app.storageQueue("GeneratePdfFromQueue", {
     const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
     const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
     await containerClient.createIfNotExists();
+    
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-
     await blockBlobClient.uploadData(pdfBuffer, {
       blobHTTPHeaders: { blobContentType: "application/pdf" },
     });
 
-    // --- LOCALIZAÇÃO DO CÓDIGO DE DEBUG ---
-    const debugHtmlName = `${BLOB_PREFIX}${viewModel.reportId}_debug.html`.replace(/\/{2,}/g, "/");
-    const debugBlobClient = containerClient.getBlockBlobClient(debugHtmlName);
-    
-    await debugBlobClient.uploadData(Buffer.from(renderedHtml, "utf8"), {
-      blobHTTPHeaders: { blobContentType: "text/html" },
-    });
-    // --------------------------------------
+    // --- DEBUG: Guardar HTML Processado ---
+    try {
+        const debugHtmlName = `${BLOB_PREFIX}${viewModel.reportId}_debug.html`.replace(/\/{2,}/g, "/");
+        const debugBlobClient = containerClient.getBlockBlobClient(debugHtmlName);
+        await debugBlobClient.uploadData(Buffer.from(renderedHtml, "utf8"), {
+            blobHTTPHeaders: { blobContentType: "text/html" },
+        });
+    } catch (e) {
+        context.log("Erro ao salvar HTML de debug:", e.message);
+    }
 
-    // 4. Notificar Sucesso - ALTERADO PARA BATER COM O ESQUEMA DO FLOW
+    // 4. Notificar Sucesso (Flow)
     await sendResultMessage({
       version: 1,
       reportId: viewModel.reportId,
@@ -202,6 +192,6 @@ app.storageQueue("GeneratePdfFromQueue", {
       }
     }, context);
 
-    context.log(`PDF gerado com sucesso para o relatório ${viewModel.reportId}`);
+    context.log(`PDF e Debug HTML gerados para: ${viewModel.reportId}`);
   },
 });
