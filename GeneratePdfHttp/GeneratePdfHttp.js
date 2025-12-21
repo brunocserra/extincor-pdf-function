@@ -31,54 +31,35 @@ const JOBS_QUEUE_NAME = process.env.PDF_QUEUE_NAME || "pdf-generation-jobs";
 // =====================
 
 function log(context, message) {
-  // Em alguns modos o context.log é função
   if (context && typeof context.log === "function") return context.log(message);
-  // fallback
-  // eslint-disable-next-line no-console
   console.log(message);
 }
 
 async function sendResultMessage(resultObj, context) {
   if (!RESULTS_CONN_STR) return;
-
   try {
     const qsc = QueueServiceClient.fromConnectionString(RESULTS_CONN_STR);
     const qc = qsc.getQueueClient(RESULTS_QUEUE_NAME);
     await qc.createIfNotExists();
-
     const messageText = JSON.stringify(resultObj);
     await qc.sendMessage(Buffer.from(messageText).toString("base64"));
-
     log(context, `[QUEUE] Resultado enviado para ${RESULTS_QUEUE_NAME}`);
   } catch (err) {
     log(context, `[QUEUE ERROR] Erro ao enviar resultado: ${err?.message || err}`);
   }
 }
 
-/**
- * Normaliza listas vindas como:
- * - string: "a;b;c"
- * - array: ["a;b;c"]  (caso típico: 1 string com ;)
- * - array: ["a","b","c"]
- * - array: [{Value:"..."}, {Name:"..."}]
- *
- * Resultado: ["a","b","c"] (cada item vira 1 <li>)
- */
 function normalizeList(arrOrNull) {
   if (!arrOrNull) return [];
-
   const out = [];
-
   const pushSplit = (value) => {
     if (value == null) return;
     const str = String(value).trim();
     if (!str) return;
-
     const parts = str
       .split(";")
       .map((p) => p.trim())
       .filter((p) => p.length > 0 && p !== "[object Object]");
-
     for (const p of parts) out.push(p);
   };
 
@@ -94,18 +75,11 @@ function normalizeList(arrOrNull) {
         continue;
       }
       if (item && typeof item === "object") {
-        const val =
-          item.Value ??
-          item.Result ??
-          item.Name ??
-          item.Label ??
-          item.t ??
-          "";
+        const val = item.Value ?? item.Result ?? item.Name ?? item.Label ?? item.t ?? "";
         pushSplit(val);
       }
     }
   }
-
   return out;
 }
 
@@ -118,21 +92,31 @@ function safeJsonParse(input, context) {
   }
 }
 
+// CORREÇÃO: Adicionado try/catch e validação de buffer
 async function fetchUrlToBuffer(url, context, label) {
-  const r = await axios.get(url, {
-    responseType: "arraybuffer",
-    timeout: 60000
-  });
+  try {
+    const r = await axios.get(url, {
+      responseType: "arraybuffer",
+      timeout: 30000, // Reduzido para 30s para evitar travar o worker
+      validateStatus: (status) => status >= 200 && status < 300
+    });
 
-  const buf = Buffer.from(r.data);
-  log(context, `[FETCH] ${label || "asset"} bytes=${buf.length}`);
-  return buf;
+    if (!r.data || r.data.byteLength === 0) return null;
+
+    const buf = Buffer.from(r.data);
+    log(context, `[FETCH] ${label || "asset"} bytes=${buf.length}`);
+    return buf;
+  } catch (err) {
+    log(context, `[FETCH SKIP] Falha ao baixar ${label}: ${err.message}`);
+    return null;
+  }
 }
 
 async function optimizePhotoToJpeg(inBuf, context, label) {
   const MAX_W = 1280;
   const QUALITY = 65;
 
+  // CORREÇÃO: Sharp só processa se inBuf for válido
   const outBuf = await sharp(inBuf)
     .rotate()
     .resize({ width: MAX_W, withoutEnlargement: true })
@@ -165,7 +149,6 @@ app.storageQueue("GeneratePdfFromQueue", {
       }
 
       const rawFotoUrls = normalizeList(data.fotos);
-
       const photoAssets = [];
       const localPhotoNames = [];
 
@@ -173,11 +156,18 @@ app.storageQueue("GeneratePdfFromQueue", {
         const url = rawFotoUrls[i];
 
         const inBuf = await fetchUrlToBuffer(url, context, `photo_${i + 1}`);
-        const outBuf = await optimizePhotoToJpeg(inBuf, context, `photo_${i + 1}`);
+        
+        // CORREÇÃO: Se não há buffer, ignora a foto e segue para a próxima
+        if (!inBuf) continue;
 
-        const filename = `img_${String(i + 1).padStart(2, "0")}.jpg`;
-        photoAssets.push({ filename, buffer: outBuf, contentType: "image/jpeg" });
-        localPhotoNames.push(filename);
+        try {
+          const outBuf = await optimizePhotoToJpeg(inBuf, context, `photo_${i + 1}`);
+          const filename = `img_${String(i + 1).padStart(2, "0")}.jpg`;
+          photoAssets.push({ filename, buffer: outBuf, contentType: "image/jpeg" });
+          localPhotoNames.push(filename);
+        } catch (sharpErr) {
+          log(context, `[SHARP SKIP] Erro ao otimizar foto ${i + 1}: ${sharpErr.message}`);
+        }
       }
 
       const viewModel = {
@@ -196,7 +186,6 @@ app.storageQueue("GeneratePdfFromQueue", {
       const renderedHtml = mustache.render(htmlTemplate, viewModel);
 
       const form = new FormData();
-
       form.append("files", Buffer.from(renderedHtml, "utf8"), {
         filename: "index.html",
         contentType: "text/html"
@@ -218,13 +207,9 @@ app.storageQueue("GeneratePdfFromQueue", {
       });
 
       const pdfBuffer = Buffer.from(response.data);
-      log(context, `[PDF] sizeBytes=${pdfBuffer.length}`);
-
       const blobName = `${BLOB_PREFIX}${viewModel.reportId}.pdf`.replace(/\/{2,}/g, "/");
 
-      const blobServiceClient = BlobServiceClient.fromConnectionString(
-        AZURE_STORAGE_CONNECTION_STRING
-      );
+      const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
       const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
       await containerClient.createIfNotExists();
 
@@ -233,37 +218,29 @@ app.storageQueue("GeneratePdfFromQueue", {
         blobHTTPHeaders: { blobContentType: "application/pdf" }
       });
 
-      await sendResultMessage(
-        {
-          version: 1,
-          reportId: viewModel.reportId,
-          status: "SUCCEEDED",
-          createdAtUtc: new Date().toISOString(),
-          source: {
-            dataverse: {
-              table: data.dataverse?.table || "cra4d_pedidosnovos",
-              rowId: data.dataverse?.rowId,
-              fileColumn: data.dataverse?.fileColumn || "cra4d_relatorio_pdf_relatorio",
-              fileName: data.dataverse?.fileName || `${viewModel.reportId}.pdf`
-            }
-          },
-          pdf: {
-            containerName: CONTAINER_NAME,
-            blobName,
-            blobUrl: blockBlobClient.url,
-            sizeBytes: pdfBuffer.length
-          },
-          images: {
-            count: localPhotoNames.length
+      await sendResultMessage({
+        version: 1,
+        reportId: viewModel.reportId,
+        status: "SUCCEEDED",
+        createdAtUtc: new Date().toISOString(),
+        source: {
+          dataverse: {
+            table: data.dataverse?.table || "cra4d_pedidosnovos",
+            rowId: data.dataverse?.rowId,
+            fileColumn: data.dataverse?.fileColumn || "cra4d_relatorio_pdf_relatorio",
+            fileName: data.dataverse?.fileName || `${viewModel.reportId}.pdf`
           }
         },
-        context
-      );
+        pdf: {
+          containerName: CONTAINER_NAME,
+          blobName,
+          blobUrl: blockBlobClient.url,
+          sizeBytes: pdfBuffer.length
+        },
+        images: { count: localPhotoNames.length }
+      }, context);
 
-      log(
-        context,
-        `[SUCCESS] Relatório ${reportId} concluído | fotos=${localPhotoNames.length} | sizeBytes=${pdfBuffer.length}`
-      );
+      log(context, `[SUCCESS] Relatório ${reportId} concluído | fotos=${localPhotoNames.length}`);
     } catch (err) {
       log(context, `[FATAL ERROR] ${err?.message || err}`);
       throw err;
