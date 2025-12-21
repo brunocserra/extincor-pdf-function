@@ -55,14 +55,29 @@ function normalizeList(arrOrNull) {
 }
 
 async function sendResultMessage(resultObj, context) {
-  if (!RESULTS_CONN_STR) return;
+  // Tenta usar a string específica de resultados ou a geral da queue
+  const connectionString = RESULTS_CONN_STR || process.env[QUEUE_CONNECTION];
+  const queueName = RESULTS_QUEUE_NAME || "pdf-results";
+
+  if (!connectionString) {
+    context.log("ERRO: Nenhuma String de Ligação encontrada para a Queue de resultados.");
+    return;
+  }
+
   try {
-    const qsc = QueueServiceClient.fromConnectionString(RESULTS_CONN_STR);
-    const qc = qsc.getQueueClient(RESULTS_RESULTS_QUEUE_NAME || RESULTS_QUEUE_NAME);
+    const qsc = QueueServiceClient.fromConnectionString(connectionString);
+    const qc = qsc.getQueueClient(queueName);
+    
+    // Garante que a fila existe antes de enviar
     await qc.createIfNotExists();
-    await qc.sendMessage(JSON.stringify(resultObj));
+    
+    // Envia a mensagem convertida para Base64 (necessário para o Power Automate ler bem)
+    const messageText = JSON.stringify(resultObj);
+    await qc.sendMessage(Buffer.from(messageText).toString('base64'));
+    
+    context.log(`Mensagem enviada com sucesso para a fila: ${queueName}`);
   } catch (err) {
-    context.log(`Erro ao enviar resultado: ${err.message}`);
+    context.log(`Erro crítico ao enviar resultado para a Queue: ${err.message}`);
   }
 }
 
