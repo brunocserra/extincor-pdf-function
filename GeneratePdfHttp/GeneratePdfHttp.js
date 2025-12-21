@@ -7,6 +7,7 @@ const mustache = require("mustache");
 const { BlobServiceClient } = require("@azure/storage-blob");
 const { QueueServiceClient } = require("@azure/storage-queue");
 const FormData = require("form-data");
+const sharp = require("sharp"); // Essencial para reduzir os 65MB
 
 // CONFIGURAÇÕES DE AMBIENTE
 const GOTENBERG_URL = process.env.GOTENBERG_URL; 
@@ -29,6 +30,25 @@ function parseQueueMessage(msg) {
 function safeString(v) {
   if (v === null || v === undefined) return "";
   return String(v);
+}
+
+// Nova função helper para comprimir e converter para Base64
+async function processAndCompressImage(url, context) {
+  try {
+    const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 20000 });
+    const buffer = Buffer.from(response.data);
+    
+    // Redimensiona para 1000px e comprime qualidade para 60% (Equilíbrio ideal tamanho/vista)
+    const compressedBuffer = await sharp(buffer)
+      .resize(1000, null, { withoutEnlargement: true })
+      .jpeg({ quality: 60, progressive: true })
+      .toBuffer();
+    
+    return `data:image/jpeg;base64,${compressedBuffer.toString('base64')}`;
+  } catch (err) {
+    context.log(`Aviso: Falha ao comprimir imagem ${url}: ${err.message}`);
+    return null; 
+  }
 }
 
 function normalizeList(arrOrNull) {
@@ -71,7 +91,7 @@ app.storageQueue("GeneratePdfFromQueue", {
   connection: QUEUE_CONNECTION,
 
   handler: async (queueItem, context) => {
-    context.log(`Processando mensagem da queue...`);
+    context.log(`Iniciando geração de PDF otimizado...`);
 
     let payload;
     try {
@@ -85,7 +105,18 @@ app.storageQueue("GeneratePdfFromQueue", {
     
     if (!reportId) throw new Error("Missing reportId");
 
-    // Construção do ViewModel com correção para [object Object] nas fotos
+    // 1. Processamento de Fotos (Conversão para Base64 Comprimido)
+    let rawFotos = Array.isArray(data.fotos) ? data.fotos : [];
+    let compressedFotosBase64 = [];
+
+    for (const f of rawFotos) {
+      const url = typeof f === "string" ? f : (f.Value || f.Result || "");
+      if (url && url.startsWith("http")) {
+        const base64Img = await processAndCompressImage(url, context);
+        if (base64Img) compressedFotosBase64.push(base64Img);
+      }
+    }
+
     const viewModel = {
       reportId: safeString(reportId),
       header: {
@@ -107,15 +138,11 @@ app.storageQueue("GeneratePdfFromQueue", {
       },
       maoObra: normalizeList(data.maoObra),
       material: normalizeList(data.material),
-      
-      // CORREÇÃO: Mapeia o array de fotos para garantir que extraímos a STRING do URL
-      fotos: Array.isArray(data.fotos) 
-        ? data.fotos.map(f => (typeof f === "string" ? f : (f.Value || f.Result || "")))
-        : [],
-      temFotos: Array.isArray(data.fotos) && data.fotos.length > 0
+      fotos: compressedFotosBase64,
+      temFotos: compressedFotosBase64.length > 0
     };
 
-    // 1. Carregar e Renderizar HTML
+    // 2. Carregar e Renderizar HTML
     const templatePath = path.join(__dirname, "Preventiva.html");
     const htmlTemplate = fs.readFileSync(templatePath, "utf8");
     
@@ -127,19 +154,16 @@ app.storageQueue("GeneratePdfFromQueue", {
       throw err;
     }
 
-    // 2. Enviar para o Gotenberg
+    // 3. Enviar para o Gotenberg
     const form = new FormData();
     form.append("files", Buffer.from(renderedHtml, "utf8"), {
       filename: "index.html",
       contentType: "text/html",
     });
 
-    // --- ESTAS SÃO AS LINHAS QUE DEVES ADICIONAR ---
-    // PDF/A-1b força a otimização de cores e fontes, reduzindo o peso
+    // Parâmetros de otimização do PDF
     form.append("pdfFormat", "PDF/A-1b"); 
-    // Omitir fundos desnecessários ajuda na compressão de camadas
     form.append("omitBackgrounds", "false"); 
-    // ----------------------------------------------
 
     let pdfBuffer;
     try {
@@ -154,7 +178,7 @@ app.storageQueue("GeneratePdfFromQueue", {
       throw err;
     }
 
-    // 3. Upload para o Azure Blob
+    // 4. Upload para o Azure Blob
     const blobName = `${BLOB_PREFIX}${viewModel.reportId}.pdf`.replace(/\/{2,}/g, "/");
     const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
     const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
@@ -165,18 +189,7 @@ app.storageQueue("GeneratePdfFromQueue", {
       blobHTTPHeaders: { blobContentType: "application/pdf" },
     });
 
-    // --- DEBUG: Guardar HTML Processado ---
-    try {
-        const debugHtmlName = `${BLOB_PREFIX}${viewModel.reportId}_debug.html`.replace(/\/{2,}/g, "/");
-        const debugBlobClient = containerClient.getBlockBlobClient(debugHtmlName);
-        await debugBlobClient.uploadData(Buffer.from(renderedHtml, "utf8"), {
-            blobHTTPHeaders: { blobContentType: "text/html" },
-        });
-    } catch (e) {
-        context.log("Erro ao salvar HTML de debug:", e.message);
-    }
-
-    // 4. Notificar Sucesso (Flow)
+    // 5. Notificar Sucesso (Flow)
     await sendResultMessage({
       version: 1,
       reportId: viewModel.reportId,
@@ -199,6 +212,6 @@ app.storageQueue("GeneratePdfFromQueue", {
       }
     }, context);
 
-    context.log(`PDF e Debug HTML gerados para: ${viewModel.reportId}`);
+    context.log(`Relatório finalizado. Fotos processadas: ${compressedFotosBase64.length}. Tamanho PDF: ${(pdfBuffer.length / 1024).toFixed(2)} KB`);
   },
 });
