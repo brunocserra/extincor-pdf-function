@@ -10,7 +10,7 @@ const { BlobServiceClient } = require("@azure/storage-blob");
 const { QueueServiceClient } = require("@azure/storage-queue");
 const FormData = require("form-data");
 
-// =================
+// =====================
 // CONFIG
 // =====================
 const GOTENBERG_URL = process.env.GOTENBERG_URL;
@@ -27,37 +27,18 @@ const RESULTS_CONN_STR =
 const JOBS_QUEUE_NAME = process.env.PDF_QUEUE_NAME || "pdf-generation-jobs";
 
 // =====================
-// LOGGING (corrige "context.log.error is not a function")
-// =====================
-function createLogger(context) {
-  const base = typeof context?.log === "function" ? context.log : console.log;
-
-  const write = (level, msg, err) => {
-    const prefix = `[${level}]`;
-    const text = err ? `${msg} | ${err?.message || err}` : msg;
-    try {
-      base(`${prefix} ${text}`);
-      if (err?.stack) base(`${prefix} ${err.stack}`);
-    } catch {
-      // fallback extremo
-      console.log(`${prefix} ${text}`);
-      if (err?.stack) console.log(`${prefix} ${err.stack}`);
-    }
-  };
-
-  return {
-    info: (m) => write("INFO", m),
-    warn: (m) => write("WARN", m),
-    error: (m, e) => write("ERROR", m, e),
-    debug: (m) => write("DEBUG", m)
-  };
-}
-
-// =====================
 // HELPERS
 // =====================
 
-async function sendResultMessage(resultObj, log) {
+function log(context, message) {
+  // Em alguns modos o context.log é função
+  if (context && typeof context.log === "function") return context.log(message);
+  // fallback
+  // eslint-disable-next-line no-console
+  console.log(message);
+}
+
+async function sendResultMessage(resultObj, context) {
   if (!RESULTS_CONN_STR) return;
 
   try {
@@ -68,9 +49,9 @@ async function sendResultMessage(resultObj, log) {
     const messageText = JSON.stringify(resultObj);
     await qc.sendMessage(Buffer.from(messageText).toString("base64"));
 
-    log.info(`[QUEUE] Resultado enviado para ${RESULTS_QUEUE_NAME}`);
+    log(context, `[QUEUE] Resultado enviado para ${RESULTS_QUEUE_NAME}`);
   } catch (err) {
-    log.error("[QUEUE] Erro ao enviar resultado", err);
+    log(context, `[QUEUE ERROR] Erro ao enviar resultado: ${err?.message || err}`);
   }
 }
 
@@ -90,7 +71,6 @@ function normalizeList(arrOrNull) {
 
   const pushSplit = (value) => {
     if (value == null) return;
-
     const str = String(value).trim();
     if (!str) return;
 
@@ -129,44 +109,38 @@ function normalizeList(arrOrNull) {
   return out;
 }
 
-function safeJsonParse(input) {
-  return typeof input === "string" ? JSON.parse(input) : input;
-}
-
-async function fetchUrlToBuffer(url, log, label) {
+function safeJsonParse(input, context) {
   try {
-    const r = await axios.get(url, {
-      responseType: "arraybuffer",
-      timeout: 60000
-    });
-
-    const buf = Buffer.from(r.data);
-    log.info(`[FETCH] ${label || "asset"} bytes=${buf.length}`);
-    return buf;
-  } catch (err) {
-    log.error(`[FETCH] Falhou download: ${label || ""} url=${url}`, err);
-    throw err;
+    return typeof input === "string" ? JSON.parse(input) : input;
+  } catch (e) {
+    log(context, `[JSON ERROR] Erro no JSON da mensagem: ${e?.message || e}`);
+    throw e;
   }
 }
 
-async function optimizePhotoToJpeg(inBuf, log, label) {
-  // Ajusta conforme necessário
-  const MAX_W = 1280; // suficiente para A4 na maioria dos casos
-  const QUALITY = 65; // 60-70 típico
+async function fetchUrlToBuffer(url, context, label) {
+  const r = await axios.get(url, {
+    responseType: "arraybuffer",
+    timeout: 60000
+  });
 
-  try {
-    const outBuf = await sharp(inBuf)
-      .rotate() // respeita EXIF
-      .resize({ width: MAX_W, withoutEnlargement: true })
-      .jpeg({ quality: QUALITY, mozjpeg: true })
-      .toBuffer();
+  const buf = Buffer.from(r.data);
+  log(context, `[FETCH] ${label || "asset"} bytes=${buf.length}`);
+  return buf;
+}
 
-    log.info(`[OPT] ${label} in=${inBuf.length} out=${outBuf.length}`);
-    return outBuf;
-  } catch (err) {
-    log.error(`[OPT] Falhou otimização: ${label || ""}`, err);
-    throw err;
-  }
+async function optimizePhotoToJpeg(inBuf, context, label) {
+  const MAX_W = 1280;
+  const QUALITY = 65;
+
+  const outBuf = await sharp(inBuf)
+    .rotate()
+    .resize({ width: MAX_W, withoutEnlargement: true })
+    .jpeg({ quality: QUALITY, mozjpeg: true })
+    .toBuffer();
+
+  log(context, `[OPT] ${label} in=${inBuf.length} out=${outBuf.length}`);
+  return outBuf;
 }
 
 // =====================
@@ -178,20 +152,11 @@ app.storageQueue("GeneratePdfFromQueue", {
   connection: QUEUE_CONNECTION,
 
   handler: async (queueItem, context) => {
-    const log = createLogger(context);
-
-    let payload;
-    try {
-      payload = safeJsonParse(queueItem);
-    } catch (err) {
-      log.error("Erro no JSON da mensagem (parse)", err);
-      throw err;
-    }
-
+    const payload = safeJsonParse(queueItem, context);
     const data = payload?.data ?? payload ?? {};
-    const reportId = data.reportId || data.header?.reportNumber || "Relatorio";
 
-    log.info(`[START] Processando Relatório: ${reportId}`);
+    const reportId = data.reportId || data.header?.reportNumber || "Relatorio";
+    log(context, `[START] Processando Relatório: ${reportId}`);
 
     try {
       if (!GOTENBERG_URL) throw new Error("GOTENBERG_URL não definido");
@@ -199,10 +164,6 @@ app.storageQueue("GeneratePdfFromQueue", {
         throw new Error("AZURE_STORAGE_CONNECTION_STRING não definido");
       }
 
-      // -----------------
-      // 1) Fotos: URLs -> download -> optimize -> assets locais
-      // (Logo mantém remoto no HTML)
-      // -----------------
       const rawFotoUrls = normalizeList(data.fotos);
 
       const photoAssets = [];
@@ -211,21 +172,14 @@ app.storageQueue("GeneratePdfFromQueue", {
       for (let i = 0; i < rawFotoUrls.length; i++) {
         const url = rawFotoUrls[i];
 
-        const inBuf = await fetchUrlToBuffer(url, log, `photo_${i + 1}`);
-        const outBuf = await optimizePhotoToJpeg(inBuf, log, `photo_${i + 1}`);
+        const inBuf = await fetchUrlToBuffer(url, context, `photo_${i + 1}`);
+        const outBuf = await optimizePhotoToJpeg(inBuf, context, `photo_${i + 1}`);
 
         const filename = `img_${String(i + 1).padStart(2, "0")}.jpg`;
-        photoAssets.push({
-          filename,
-          buffer: outBuf,
-          contentType: "image/jpeg"
-        });
+        photoAssets.push({ filename, buffer: outBuf, contentType: "image/jpeg" });
         localPhotoNames.push(filename);
       }
 
-      // -----------------
-      // 2) ViewModel (corrige bullets mão de obra/material)
-      // -----------------
       const viewModel = {
         reportId: String(reportId),
         header: data.header || {},
@@ -233,20 +187,14 @@ app.storageQueue("GeneratePdfFromQueue", {
         relatorio: data.relatorio || {},
         maoObra: normalizeList(data.maoObra),
         material: normalizeList(data.material),
-        fotos: localPhotoNames, // img_01.jpg, img_02.jpg...
+        fotos: localPhotoNames,
         temFotos: localPhotoNames.length > 0
       };
 
-      // -----------------
-      // 3) Render HTML
-      // -----------------
       const templatePath = path.join(__dirname, "Preventiva.html");
       const htmlTemplate = fs.readFileSync(templatePath, "utf8");
       const renderedHtml = mustache.render(htmlTemplate, viewModel);
 
-      // -----------------
-      // 4) Gotenberg (HTML + fotos como assets)
-      // -----------------
       const form = new FormData();
 
       form.append("files", Buffer.from(renderedHtml, "utf8"), {
@@ -270,15 +218,9 @@ app.storageQueue("GeneratePdfFromQueue", {
       });
 
       const pdfBuffer = Buffer.from(response.data);
-      log.info(`[PDF] sizeBytes=${pdfBuffer.length}`);
+      log(context, `[PDF] sizeBytes=${pdfBuffer.length}`);
 
-      // -----------------
-      // 5) Upload Blob
-      // -----------------
-      const blobName = `${BLOB_PREFIX}${viewModel.reportId}.pdf`.replace(
-        /\/{2,}/g,
-        "/"
-      );
+      const blobName = `${BLOB_PREFIX}${viewModel.reportId}.pdf`.replace(/\/{2,}/g, "/");
 
       const blobServiceClient = BlobServiceClient.fromConnectionString(
         AZURE_STORAGE_CONNECTION_STRING
@@ -291,9 +233,6 @@ app.storageQueue("GeneratePdfFromQueue", {
         blobHTTPHeaders: { blobContentType: "application/pdf" }
       });
 
-      // -----------------
-      // 6) Result para o Flow
-      // -----------------
       await sendResultMessage(
         {
           version: 1,
@@ -304,8 +243,7 @@ app.storageQueue("GeneratePdfFromQueue", {
             dataverse: {
               table: data.dataverse?.table || "cra4d_pedidosnovos",
               rowId: data.dataverse?.rowId,
-              fileColumn:
-                data.dataverse?.fileColumn || "cra4d_relatorio_pdf_relatorio",
+              fileColumn: data.dataverse?.fileColumn || "cra4d_relatorio_pdf_relatorio",
               fileName: data.dataverse?.fileName || `${viewModel.reportId}.pdf`
             }
           },
@@ -319,14 +257,15 @@ app.storageQueue("GeneratePdfFromQueue", {
             count: localPhotoNames.length
           }
         },
-        log
+        context
       );
 
-      log.info(
+      log(
+        context,
         `[SUCCESS] Relatório ${reportId} concluído | fotos=${localPhotoNames.length} | sizeBytes=${pdfBuffer.length}`
       );
     } catch (err) {
-      log.error("[FATAL] Erro a gerar relatório", err);
+      log(context, `[FATAL ERROR] ${err?.message || err}`);
       throw err;
     }
   }
