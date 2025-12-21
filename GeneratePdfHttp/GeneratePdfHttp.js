@@ -170,6 +170,15 @@ app.storageQueue("GeneratePdfFromQueue", {
       blobHTTPHeaders: { blobContentType: "application/pdf" },
     });
 
+    // --- LOCALIZAÇÃO DO CÓDIGO DE DEBUG ---
+    const debugHtmlName = `${BLOB_PREFIX}${viewModel.reportId}_debug.html`.replace(/\/{2,}/g, "/");
+    const debugBlobClient = containerClient.getBlockBlobClient(debugHtmlName);
+    
+    await debugBlobClient.uploadData(Buffer.from(renderedHtml, "utf8"), {
+      blobHTTPHeaders: { blobContentType: "text/html" },
+    });
+    // --------------------------------------
+
     // 4. Notificar Sucesso - ALTERADO PARA BATER COM O ESQUEMA DO FLOW
     await sendResultMessage({
       version: 1,
