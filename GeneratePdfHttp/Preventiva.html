@@ -18,15 +18,11 @@
       --shadow-md: 0 4px 12px -2px rgba(15, 23, 42, 0.04);
     }
 
-    * {
-      box-sizing: border-box;
-      -webkit-print-color-adjust: exact;
-    }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; }
 
-    /* A4 com margens menores e consistentes em TODAS as páginas */
     @page {
       size: A4;
-      margin: 10mm 10mm 16mm 10mm; /* topo, direita, fundo, esquerda */
+      margin: 10mm 10mm 16mm 10mm;
     }
 
     html {
@@ -42,27 +38,19 @@
       width: 210mm;
       min-height: 297mm;
       margin: 0;
-      padding: 0; /* passa a ser o @page a controlar as margens */
+      padding: 0;
       background: var(--card-bg);
       color: var(--text-main);
       font-family: 'Inter', -apple-system, system-ui, sans-serif;
-      font-size: 15px;      /* + tamanho relativo global */
-      line-height: 1.55;    /* ligeiro aumento para acompanhar */
+      font-size: 15px;
+      line-height: 1.55;
       position: relative;
-      box-shadow: 0 0 30px rgba(0,0,0,0.2);
     }
 
-    /* ESTRUTURA PARA REPETIÇÃO DE CABEÇALHO */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-    }
-
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     thead { display: table-header-group; }
     tbody { display: table-row-group; }
 
-    /* CABEÇALHO */
     .header-wrapper {
       display: flex;
       justify-content: space-between;
@@ -73,38 +61,12 @@
       width: 100%;
     }
 
-    .logo-container img {
-      height: 60px;
-      width: auto;
-      display: block;
-    }
-
+    .logo-container img { height: 60px; width: auto; display: block; }
     .title-block { text-align: right; }
+    .title { font-size: 22px; font-weight: 800; color: var(--brand-primary); text-transform: uppercase; margin: 0 0 4px 0; }
+    .meta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+    .meta-item { color: var(--text-muted); font-size: 12px; font-weight: 600; text-transform: uppercase; }
 
-    .title {
-      font-size: 22px;
-      font-weight: 800;
-      color: var(--brand-primary);
-      text-transform: uppercase;
-      margin: 0 0 4px 0;
-      letter-spacing: -0.5px;
-    }
-
-    .meta {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 2px;
-    }
-
-    .meta-item {
-      color: var(--text-muted);
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-    }
-
-    /* RODAPÉ FIXO */
     .footer-fixed {
       position: fixed;
       bottom: 6mm;
@@ -117,118 +79,41 @@
       padding-top: 8px;
       font-size: 11px;
       color: var(--text-muted);
-      z-index: 1000;
       background: white;
     }
 
-    .footer-info {
-      text-align: left;
-      line-height: 1.4;
-    }
-
-    .page-counter-container {
-      font-weight: 700;
-      text-transform: uppercase;
-      background: var(--bg-soft);
-      padding: 4px 8px;
-      border-radius: 4px;
-    }
-
-    /* FIX: evita "0 de 0" (mantém apenas o número da página, que é suportado) */
-    .page-counter::after {
-      content: counter(page);
-    }
-
-    /* CONTEÚDO E SECÇÕES */
-    .content-area {
-      padding-top: 10px;
-    }
+    .page-counter-container { font-weight: 700; text-transform: uppercase; background: var(--bg-soft); padding: 4px 8px; border-radius: 4px; }
+    .page-counter::after { content: counter(page); }
 
     .section {
       background: var(--card-bg);
       border-radius: var(--radius-lg);
       border: 1px solid var(--border-color);
-      padding: 20px;             /* ligeiramente menor */
-      margin-bottom: 16px;       /* ligeiramente menor */
+      padding: 20px;
+      margin-bottom: 16px;
       box-shadow: var(--shadow-md);
       page-break-inside: avoid;
       position: relative;
       overflow: hidden;
     }
+    .section::before { content: ""; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--brand-accent); }
+    .section-title h2 { margin: 0 0 14px 0; font-size: 13px; font-weight: 800; color: var(--brand-primary); text-transform: uppercase; }
 
-    .section::before {
-      content: "";
-      position: absolute;
-      top: 0; left: 0; width: 4px; height: 100%;
-      background: var(--brand-accent);
-    }
-
-    .section-title h2 {
-      margin: 0 0 14px 0;
-      font-size: 13px;
-      font-weight: 800;
-      color: var(--brand-primary);
-      text-transform: uppercase;
-    }
-
-    .grid-layout {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-    }
-
-    .label {
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      display: block;
-      margin-bottom: 2px;
-    }
-
+    .grid-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; display: block; }
     .value { font-weight: 600; color: var(--text-main); }
 
-    .custom-list {
-      margin: 0; padding: 0;
-      list-style: none;
-    }
+    .custom-list { margin: 0; padding: 0; list-style: none; }
+    .custom-list li { padding: 4px 0; border-bottom: 1px solid var(--bg-soft); }
+    .custom-list li::before { content: "•"; color: var(--brand-accent); margin-right: 8px; }
 
-    .custom-list li {
-      padding: 4px 0;
-      border-bottom: 1px solid var(--bg-soft);
-    }
-
-    .custom-list li::before {
-      content: "•";
-      color: var(--brand-accent);
-      margin-right: 8px;
-    }
-
-    .photo-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }
-
-    .photo-item {
-      border-radius: 10px;
-      overflow: hidden;
-      aspect-ratio: 4 / 3;
-      border: 1px solid var(--border-color);
-      background: #f1f5f9;
-    }
-
-    .photo-item img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
+    .photo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .photo-item { border-radius: 10px; overflow: hidden; aspect-ratio: 4 / 3; border: 1px solid var(--border-color); background: #f1f5f9; }
+    .photo-item img { width: 100%; height: 100%; object-fit: cover; }
     .text { white-space: pre-wrap; }
 
     @media print {
       html, body { background: white; box-shadow: none; width: 100%; }
-      .section { box-shadow: none; border: 1px solid #eee; }
       .footer-fixed { position: fixed; bottom: 6mm; }
     }
   </style>
@@ -238,7 +123,7 @@
 
   <div class="footer-fixed">
     <div class="footer-info">
-      Documento gerado automaticamente. Para mais informações, entre em contacto com a <strong>Extinçor</strong>.<br>
+      Documento gerado automaticamente pela <strong>Extinçor</strong>.<br>
       © 2025 Extinçor - Segurança Contra Incêndios
     </div>
     <div class="page-counter-container">
@@ -274,10 +159,7 @@
             <section class="section">
               <div class="section-title"><h2>Informações do Cliente</h2></div>
               <div class="grid-layout">
-                <div style="grid-column: 1 / -1;">
-                  <span class="label">Nome do Cliente</span>
-                  <span class="value">{{cliente.nome}}</span>
-                </div>
+                <div style="grid-column: 1 / -1;"><span class="label">Nome</span><span class="value">{{cliente.nome}}</span></div>
                 <div><span class="label">NIF</span><span class="value">{{cliente.nif}}</span></div>
                 <div><span class="label">E-mail</span><span class="value">{{cliente.email}}</span></div>
                 <div style="grid-column: 1 / -1;"><span class="label">Morada</span><span class="value">{{cliente.morada}}</span></div>
@@ -303,18 +185,8 @@
             <section class="section">
               <div class="section-title"><h2>Recursos Utilizados</h2></div>
               <div class="grid-layout">
-                <div>
-                  <span class="label">Mão de Obra</span>
-                  <ul class="custom-list">
-                    {{#maoObra}}<li>{{.}}</li>{{/maoObra}}
-                  </ul>
-                </div>
-                <div>
-                  <span class="label">Materiais / Peças</span>
-                  <ul class="custom-list">
-                    {{#material}}<li>{{.}}</li>{{/material}}
-                  </ul>
-                </div>
+                <div><span class="label">Mão de Obra</span><ul class="custom-list">{{#maoObra}}<li>{{.}}</li>{{/maoObra}}</ul></div>
+                <div><span class="label">Materiais / Peças</span><ul class="custom-list">{{#material}}<li>{{.}}</li>{{/material}}</ul></div>
               </div>
             </section>
 
@@ -334,6 +206,5 @@
       </tr>
     </tbody>
   </table>
-
 </body>
 </html>
