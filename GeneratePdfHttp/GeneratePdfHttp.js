@@ -134,6 +134,13 @@ app.storageQueue("GeneratePdfFromQueue", {
       contentType: "text/html",
     });
 
+    // --- ESTAS SÃO AS LINHAS QUE DEVES ADICIONAR ---
+    // PDF/A-1b força a otimização de cores e fontes, reduzindo o peso
+    form.append("pdfFormat", "PDF/A-1b"); 
+    // Omitir fundos desnecessários ajuda na compressão de camadas
+    form.append("omitBackgrounds", "false"); 
+    // ----------------------------------------------
+
     let pdfBuffer;
     try {
       const response = await axios.post(GOTENBERG_URL, form, {
