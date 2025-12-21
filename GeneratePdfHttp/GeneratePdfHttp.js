@@ -27,10 +27,37 @@ const RESULTS_CONN_STR =
 const JOBS_QUEUE_NAME = process.env.PDF_QUEUE_NAME || "pdf-generation-jobs";
 
 // =====================
+// LOGGING (corrige "context.log.error is not a function")
+// =====================
+function createLogger(context) {
+  const base = typeof context?.log === "function" ? context.log : console.log;
+
+  const write = (level, msg, err) => {
+    const prefix = `[${level}]`;
+    const text = err ? `${msg} | ${err?.message || err}` : msg;
+    try {
+      base(`${prefix} ${text}`);
+      if (err?.stack) base(`${prefix} ${err.stack}`);
+    } catch {
+      // fallback extremo
+      console.log(`${prefix} ${text}`);
+      if (err?.stack) console.log(`${prefix} ${err.stack}`);
+    }
+  };
+
+  return {
+    info: (m) => write("INFO", m),
+    warn: (m) => write("WARN", m),
+    error: (m, e) => write("ERROR", m, e),
+    debug: (m) => write("DEBUG", m)
+  };
+}
+
+// =====================
 // HELPERS
 // =====================
 
-async function sendResultMessage(resultObj, context) {
+async function sendResultMessage(resultObj, log) {
   if (!RESULTS_CONN_STR) return;
 
   try {
@@ -41,9 +68,9 @@ async function sendResultMessage(resultObj, context) {
     const messageText = JSON.stringify(resultObj);
     await qc.sendMessage(Buffer.from(messageText).toString("base64"));
 
-    context.log(`[QUEUE] Resultado enviado para ${RESULTS_QUEUE_NAME}`);
+    log.info(`[QUEUE] Resultado enviado para ${RESULTS_QUEUE_NAME}`);
   } catch (err) {
-    context.log.error(`[QUEUE ERROR] Erro ao enviar resultado: ${err.message}`);
+    log.error("[QUEUE] Erro ao enviar resultado", err);
   }
 }
 
@@ -63,10 +90,10 @@ function normalizeList(arrOrNull) {
 
   const pushSplit = (value) => {
     if (value == null) return;
+
     const str = String(value).trim();
     if (!str) return;
 
-    // sempre parte por ; se existir
     const parts = str
       .split(";")
       .map((p) => p.trim())
@@ -102,39 +129,44 @@ function normalizeList(arrOrNull) {
   return out;
 }
 
-function safeJsonParse(input, context) {
+function safeJsonParse(input) {
+  return typeof input === "string" ? JSON.parse(input) : input;
+}
+
+async function fetchUrlToBuffer(url, log, label) {
   try {
-    return typeof input === "string" ? JSON.parse(input) : input;
-  } catch (e) {
-    context.log.error("Erro no JSON da mensagem");
-    throw e;
+    const r = await axios.get(url, {
+      responseType: "arraybuffer",
+      timeout: 60000
+    });
+
+    const buf = Buffer.from(r.data);
+    log.info(`[FETCH] ${label || "asset"} bytes=${buf.length}`);
+    return buf;
+  } catch (err) {
+    log.error(`[FETCH] Falhou download: ${label || ""} url=${url}`, err);
+    throw err;
   }
 }
 
-async function fetchUrlToBuffer(url, context, label) {
-  const r = await axios.get(url, {
-    responseType: "arraybuffer",
-    timeout: 60000
-  });
-
-  const buf = Buffer.from(r.data);
-  context.log(`[FETCH] ${label || "asset"} bytes=${buf.length}`);
-  return buf;
-}
-
-async function optimizePhotoToJpeg(inBuf, context, label) {
-  // Ajusta estes valores conforme precisares
-  const MAX_W = 1280; // 1024/1280 costuma ser suficiente em A4
+async function optimizePhotoToJpeg(inBuf, log, label) {
+  // Ajusta conforme necessário
+  const MAX_W = 1280; // suficiente para A4 na maioria dos casos
   const QUALITY = 65; // 60-70 típico
 
-  const outBuf = await sharp(inBuf)
-    .rotate() // respeita orientação EXIF
-    .resize({ width: MAX_W, withoutEnlargement: true })
-    .jpeg({ quality: QUALITY, mozjpeg: true })
-    .toBuffer();
+  try {
+    const outBuf = await sharp(inBuf)
+      .rotate() // respeita EXIF
+      .resize({ width: MAX_W, withoutEnlargement: true })
+      .jpeg({ quality: QUALITY, mozjpeg: true })
+      .toBuffer();
 
-  context.log(`[OPT] ${label} in=${inBuf.length} out=${outBuf.length}`);
-  return outBuf;
+    log.info(`[OPT] ${label} in=${inBuf.length} out=${outBuf.length}`);
+    return outBuf;
+  } catch (err) {
+    log.error(`[OPT] Falhou otimização: ${label || ""}`, err);
+    throw err;
+  }
 }
 
 // =====================
@@ -146,11 +178,20 @@ app.storageQueue("GeneratePdfFromQueue", {
   connection: QUEUE_CONNECTION,
 
   handler: async (queueItem, context) => {
-    const payload = safeJsonParse(queueItem, context);
-    const data = payload?.data ?? payload ?? {};
+    const log = createLogger(context);
 
+    let payload;
+    try {
+      payload = safeJsonParse(queueItem);
+    } catch (err) {
+      log.error("Erro no JSON da mensagem (parse)", err);
+      throw err;
+    }
+
+    const data = payload?.data ?? payload ?? {};
     const reportId = data.reportId || data.header?.reportNumber || "Relatorio";
-    context.log(`[START] Processando Relatório: ${reportId}`);
+
+    log.info(`[START] Processando Relatório: ${reportId}`);
 
     try {
       if (!GOTENBERG_URL) throw new Error("GOTENBERG_URL não definido");
@@ -160,7 +201,7 @@ app.storageQueue("GeneratePdfFromQueue", {
 
       // -----------------
       // 1) Fotos: URLs -> download -> optimize -> assets locais
-      // (Logo mantém remoto no HTML, sem mexer)
+      // (Logo mantém remoto no HTML)
       // -----------------
       const rawFotoUrls = normalizeList(data.fotos);
 
@@ -170,16 +211,20 @@ app.storageQueue("GeneratePdfFromQueue", {
       for (let i = 0; i < rawFotoUrls.length; i++) {
         const url = rawFotoUrls[i];
 
-        const inBuf = await fetchUrlToBuffer(url, context, `photo_${i + 1}`);
-        const outBuf = await optimizePhotoToJpeg(inBuf, context, `photo_${i + 1}`);
+        const inBuf = await fetchUrlToBuffer(url, log, `photo_${i + 1}`);
+        const outBuf = await optimizePhotoToJpeg(inBuf, log, `photo_${i + 1}`);
 
         const filename = `img_${String(i + 1).padStart(2, "0")}.jpg`;
-        photoAssets.push({ filename, buffer: outBuf, contentType: "image/jpeg" });
+        photoAssets.push({
+          filename,
+          buffer: outBuf,
+          contentType: "image/jpeg"
+        });
         localPhotoNames.push(filename);
       }
 
       // -----------------
-      // 2) ViewModel (corrige bullets de mão de obra e material)
+      // 2) ViewModel (corrige bullets mão de obra/material)
       // -----------------
       const viewModel = {
         reportId: String(reportId),
@@ -188,22 +233,19 @@ app.storageQueue("GeneratePdfFromQueue", {
         relatorio: data.relatorio || {},
         maoObra: normalizeList(data.maoObra),
         material: normalizeList(data.material),
-        fotos: localPhotoNames, // agora são filenames (img_01.jpg, ...)
+        fotos: localPhotoNames, // img_01.jpg, img_02.jpg...
         temFotos: localPhotoNames.length > 0
       };
 
       // -----------------
       // 3) Render HTML
-      // IMPORTANTE:
-      // - No teu Preventiva.html mantém o logo como URL (como pediste)
-      // - Na secção das fotos, o <img src="{{.}}"> vai receber img_01.jpg, etc.
       // -----------------
       const templatePath = path.join(__dirname, "Preventiva.html");
       const htmlTemplate = fs.readFileSync(templatePath, "utf8");
       const renderedHtml = mustache.render(htmlTemplate, viewModel);
 
       // -----------------
-      // 4) Gotenberg (HTML + fotos otimizadas como assets)
+      // 4) Gotenberg (HTML + fotos como assets)
       // -----------------
       const form = new FormData();
 
@@ -219,7 +261,6 @@ app.storageQueue("GeneratePdfFromQueue", {
         });
       }
 
-      // Mantive como tinhas; se quiseres reduzir ainda mais, testa remover esta linha
       form.append("pdfFormat", "PDF/A-1b");
 
       const response = await axios.post(GOTENBERG_URL, form, {
@@ -229,12 +270,15 @@ app.storageQueue("GeneratePdfFromQueue", {
       });
 
       const pdfBuffer = Buffer.from(response.data);
-      context.log(`[PDF] sizeBytes=${pdfBuffer.length}`);
+      log.info(`[PDF] sizeBytes=${pdfBuffer.length}`);
 
       // -----------------
       // 5) Upload Blob
       // -----------------
-      const blobName = `${BLOB_PREFIX}${viewModel.reportId}.pdf`.replace(/\/{2,}/g, "/");
+      const blobName = `${BLOB_PREFIX}${viewModel.reportId}.pdf`.replace(
+        /\/{2,}/g,
+        "/"
+      );
 
       const blobServiceClient = BlobServiceClient.fromConnectionString(
         AZURE_STORAGE_CONNECTION_STRING
@@ -260,7 +304,8 @@ app.storageQueue("GeneratePdfFromQueue", {
             dataverse: {
               table: data.dataverse?.table || "cra4d_pedidosnovos",
               rowId: data.dataverse?.rowId,
-              fileColumn: data.dataverse?.fileColumn || "cra4d_relatorio_pdf_relatorio",
+              fileColumn:
+                data.dataverse?.fileColumn || "cra4d_relatorio_pdf_relatorio",
               fileName: data.dataverse?.fileName || `${viewModel.reportId}.pdf`
             }
           },
@@ -274,14 +319,14 @@ app.storageQueue("GeneratePdfFromQueue", {
             count: localPhotoNames.length
           }
         },
-        context
+        log
       );
 
-      context.log(
+      log.info(
         `[SUCCESS] Relatório ${reportId} concluído | fotos=${localPhotoNames.length} | sizeBytes=${pdfBuffer.length}`
       );
     } catch (err) {
-      context.log.error(`[FATAL ERROR] ${err.message}`);
+      log.error("[FATAL] Erro a gerar relatório", err);
       throw err;
     }
   }
