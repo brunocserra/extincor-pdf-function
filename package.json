@@ -1,6 +1,6 @@
 {
   "name": "extincor-pdf-worker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Worker para gerar relatórios PDF com Gotenberg.",
   "main": "index.js",
   "scripts": {
@@ -12,6 +12,10 @@
     "@azure/storage-queue": "^12.18.0",
     "axios": "^1.7.0",
     "form-data": "^4.0.0",
-    "mustache": "^4.2.0"
+    "mustache": "^4.2.0",
+    "sharp": "^0.33.5"
+  },
+  "engines": {
+    "node": ">=18 <21"
   }
 }
