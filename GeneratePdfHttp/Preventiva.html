@@ -70,20 +70,19 @@
       display: flex;
       flex-direction: column;
       align-items: flex-end;
-      gap: 4px; /* Aumentado ligeiramente para dar ar entre linhas */
+      gap: 4px;
     }
 
-    /* AJUSTE SOLICITADO: Aumento do texto de metadados */
     .meta-item {
       color: var(--text-muted);
-      font-size: 14px; /* Subiu de 12px para 14px */
+      font-size: 14px;
       font-weight: 500;
       text-transform: uppercase;
       line-height: 1.2;
     }
 
     .meta-item strong {
-      color: var(--brand-primary); /* Destaca o número e data com a cor da marca */
+      color: var(--brand-primary);
       font-weight: 700;
     }
 
@@ -92,7 +91,8 @@
       bottom: 6mm;
       left: 10mm;
       right: 10mm;
-      display: flex;      justify-content: space-between;
+      display: flex;
+      justify-content: space-between;
       align-items: flex-end;
       border-top: 1px solid var(--border-color);
       padding-top: 8px;
@@ -108,15 +108,33 @@
       background: var(--card-bg);
       border-radius: var(--radius-lg);
       border: 1px solid var(--border-color);
-      padding: 20px;
+      padding: 0; /* Removido padding para o título encostar nas bordas se necessário */
       margin-bottom: 16px;
       box-shadow: var(--shadow-md);
       page-break-inside: avoid;
       position: relative;
       overflow: hidden;
     }
-    .section::before { content: ""; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--brand-accent); }
-    .section-title h2 { margin: 0 0 14px 0; font-size: 13px; font-weight: 800; color: var(--brand-primary); text-transform: uppercase; }
+    
+    .section-content {
+      padding: 20px;
+      position: relative;
+    }
+
+    .section::before { content: ""; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--brand-accent); z-index: 10; }
+    
+    /* AJUSTE SOLICITADO: Títulos mais destacados */
+    .section-title h2 { 
+      margin: 0; 
+      padding: 12px 20px;
+      font-size: 15px; /* Aumentado */
+      font-weight: 800; 
+      color: var(--brand-primary); 
+      text-transform: uppercase; 
+      background: var(--bg-soft); /* Fundo suave */
+      border-bottom: 1px solid var(--border-color);
+      letter-spacing: 0.5px;
+    }
 
     .grid-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     .label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; display: block; }
@@ -177,45 +195,53 @@
 
             <section class="section">
               <div class="section-title"><h2>Informações do Cliente</h2></div>
-              <div class="grid-layout">
-                <div style="grid-column: 1 / -1;"><span class="label">Nome</span><span class="value">{{cliente.nome}}</span></div>
-                <div><span class="label">NIF</span><span class="value">{{cliente.nif}}</span></div>
-                <div><span class="label">E-mail</span><span class="value">{{cliente.email}}</span></div>
-                <div style="grid-column: 1 / -1;"><span class="label">Morada</span><span class="value">{{cliente.morada}}</span></div>
+              <div class="section-content">
+                <div class="grid-layout">
+                  <div style="grid-column: 1 / -1;"><span class="label">Nome</span><span class="value">{{cliente.nome}}</span></div>
+                  <div><span class="label">NIF</span><span class="value">{{cliente.nif}}</span></div>
+                  <div><span class="label">E-mail</span><span class="value">{{cliente.email}}</span></div>
+                  <div style="grid-column: 1 / -1;"><span class="label">Morada</span><span class="value">{{cliente.morada}}</span></div>
+                </div>
               </div>
             </section>
 
             <section class="section">
               <div class="section-title"><h2>Detalhes da Intervenção</h2></div>
-              <div class="grid-layout" style="margin-bottom: 14px;">
-                <div><span class="label">Tipo</span><span class="value">{{relatorio.tipo}}</span></div>
-                <div><span class="label">Área</span><span class="value">{{relatorio.area}}</span></div>
-              </div>
-              <span class="label">Descrição</span>
-              <div style="background: var(--bg-soft); padding: 12px; border-radius: 8px; margin-top: 5px;">
-                <div class="text">{{relatorio.descricao}}</div>
-              </div>
-              <div style="margin-top: 14px;">
-                <span class="label">Situação Final</span>
-                <span class="value" style="color: var(--brand-primary); font-weight: 700;">{{relatorio.situacaoFinal}}</span>
+              <div class="section-content">
+                <div class="grid-layout" style="margin-bottom: 14px;">
+                  <div><span class="label">Tipo</span><span class="value">{{relatorio.tipo}}</span></div>
+                  <div><span class="label">Área</span><span class="value">{{relatorio.area}}</span></div>
+                </div>
+                <span class="label">Descrição</span>
+                <div style="background: var(--bg-soft); padding: 12px; border-radius: 8px; margin-top: 5px;">
+                  <div class="text">{{relatorio.descricao}}</div>
+                </div>
+                <div style="margin-top: 14px;">
+                  <span class="label">Situação Final</span>
+                  <span class="value" style="color: var(--brand-primary); font-weight: 700;">{{relatorio.situacaoFinal}}</span>
+                </div>
               </div>
             </section>
 
             <section class="section">
               <div class="section-title"><h2>Recursos Utilizados</h2></div>
-              <div class="grid-layout">
-                <div><span class="label">Mão de Obra</span><ul class="custom-list">{{#maoObra}}<li>{{.}}</li>{{/maoObra}}</ul></div>
-                <div><span class="label">Materiais / Peças</span><ul class="custom-list">{{#material}}<li>{{.}}</li>{{/material}}</ul></div>
+              <div class="section-content">
+                <div class="grid-layout">
+                  <div><span class="label">Mão de Obra</span><ul class="custom-list">{{#maoObra}}<li>{{.}}</li>{{/maoObra}}</ul></div>
+                  <div><span class="label">Materiais / Peças</span><ul class="custom-list">{{#material}}<li>{{.}}</li>{{/material}}</ul></div>
+                </div>
               </div>
             </section>
 
             {{#temFotos}}
             <section class="section">
               <div class="section-title"><h2>Registo Fotográfico</h2></div>
-              <div class="photo-grid">
-                {{#fotos}}
-                <div class="photo-item"><img src="{{.}}" alt="Foto"></div>
-                {{/fotos}}
+              <div class="section-content">
+                <div class="photo-grid">
+                  {{#fotos}}
+                  <div class="photo-item"><img src="{{.}}" alt="Foto"></div>
+                  {{/fotos}}
+                </div>
               </div>
             </section>
             {{/temFotos}}
