@@ -10,7 +10,7 @@ const { BlobServiceClient } = require("@azure/storage-blob");
 const { QueueServiceClient } = require("@azure/storage-queue");
 const FormData = require("form-data");
 
-// ====================
+// =================
 // CONFIG
 // =====================
 const GOTENBERG_URL = process.env.GOTENBERG_URL;
