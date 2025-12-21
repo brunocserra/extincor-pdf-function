@@ -31,24 +31,16 @@ function safeString(v) {
   return String(v);
 }
 
-/**
- * Nova versão da normalizeList:
- * 1. Converte objetos ou strings em texto simples.
- * 2. Se houver ";" no texto, divide em múltiplos itens (bullets).
- */
 function normalizeList(arrOrNull) {
   if (!arrOrNull) return [];
   
   let items = [];
   
-  // Se for uma string única (ex: vinda do Power Apps com ";")
   if (typeof arrOrNull === "string") {
     items = arrOrNull.split(';');
   } 
-  // Se for um array de objetos ou strings
   else if (Array.isArray(arrOrNull)) {
     arrOrNull.forEach(item => {
-      // Tenta extrair o texto de várias formas comuns (propriedade 't', 'Value' ou string direta)
       const text = typeof item === "string" ? item : (item.t || item.Value || "");
       
       if (text.includes(';')) {
@@ -59,7 +51,6 @@ function normalizeList(arrOrNull) {
     });
   }
 
-  // Limpa espaços em branco e remove itens vazios
   return items.map(s => s.trim()).filter(s => s.length > 0);
 }
 
@@ -67,7 +58,7 @@ async function sendResultMessage(resultObj, context) {
   if (!RESULTS_CONN_STR) return;
   try {
     const qsc = QueueServiceClient.fromConnectionString(RESULTS_CONN_STR);
-    const qc = qsc.getQueueClient(RESULTS_QUEUE_NAME);
+    const qc = qsc.getQueueClient(RESULTS_RESULTS_QUEUE_NAME || RESULTS_QUEUE_NAME);
     await qc.createIfNotExists();
     await qc.sendMessage(JSON.stringify(resultObj));
   } catch (err) {
@@ -96,7 +87,6 @@ app.storageQueue("GeneratePdfFromQueue", {
     
     if (!reportId) throw new Error("Missing reportId");
 
-    // Construção do ViewModel para o Mustache
     const viewModel = {
       reportId: safeString(reportId),
       header: {
@@ -116,12 +106,8 @@ app.storageQueue("GeneratePdfFromQueue", {
         observacoes: safeString(data.relatorio?.observacoes),
         situacaoFinal: safeString(data.relatorio?.situacaoFinal),
       },
-      
-      // Listas normalizadas para virarem bullets
       maoObra: normalizeList(data.maoObra),
       material: normalizeList(data.material),
-      
-      // Fotos e Flag de controlo para o HTML
       fotos: Array.isArray(data.fotos) ? data.fotos : [],
       temFotos: Array.isArray(data.fotos) && data.fotos.length > 0
     };
@@ -169,11 +155,27 @@ app.storageQueue("GeneratePdfFromQueue", {
       blobHTTPHeaders: { blobContentType: "application/pdf" },
     });
 
-    // 4. Notificar Sucesso
+    // 4. Notificar Sucesso - ALTERADO PARA BATER COM O ESQUEMA DO FLOW
     await sendResultMessage({
+      version: 1,
       reportId: viewModel.reportId,
       status: "SUCCEEDED",
-      pdfUrl: blockBlobClient.url
+      createdAtUtc: new Date().toISOString(),
+      source: {
+        dataverse: {
+          table: data.dataverse?.table || "cra4d_pedidosnovos",
+          rowId: data.dataverse?.rowId,
+          fileColumn: data.dataverse?.fileColumn || "cra4d_relatorio_pdf_relatorio",
+          fileName: data.dataverse?.fileName || `${viewModel.reportId}.pdf`
+        }
+      },
+      pdf: {
+        containerName: CONTAINER_NAME,
+        blobName: blobName,
+        blobUrl: blockBlobClient.url,
+        contentType: "application/pdf",
+        sizeBytes: pdfBuffer.length
+      }
     }, context);
 
     context.log(`PDF gerado com sucesso para o relatório ${viewModel.reportId}`);
