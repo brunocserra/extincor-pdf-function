@@ -1,63 +1,93 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/azure/functions-action
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-
 name: Build and deploy Node.js project to Azure Function App - extincor-pdf-worker-v3
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # set this to the path to your web app project, defaults to the repository root
-  NODE_VERSION: '18.x' # set this to the node version to use (supports 8.x, 10.x, 12.x)
+  NODE_VERSION: '18.x'
+  # pasta do teu projecto (repo root = '.')
+  APP_PATH: '.'
+  # nome do zip que vamos gerar
+  ZIP_NAME: 'functionapp.zip'
 
 jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: read #This is required for actions/checkout
-      
+      contents: read
+
     steps:
-      - name: 'Checkout GitHub Action'
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node ${{ env.NODE_VERSION }} Environment
-        uses: actions/setup-node@v3
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: 'Resolve Project Dependencies Using Npm'
+      - name: Install dependencies (clean)
         shell: pwsh
         run: |
-          pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-          npm install
+          pushd "${{ env.APP_PATH }}"
+          npm ci
+          popd
+
+      - name: Build (if present)
+        shell: pwsh
+        run: |
+          pushd "${{ env.APP_PATH }}"
           npm run build --if-present
+          popd
+
+      - name: Test (if present)
+        shell: pwsh
+        run: |
+          pushd "${{ env.APP_PATH }}"
           npm run test --if-present
           popd
 
-      - name: Upload artifact for deployment job
+      # Cria zip de deployment (sem .git e sem lixo)
+      - name: Create deployment zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          pushd "${{ env.APP_PATH }}"
+
+          # garante que não empacotas git e afins
+          if (Test-Path ".git") { Remove-Item -Recurse -Force ".git" }
+
+          # cria zip na pasta do runner
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE "${{ env.ZIP_NAME }}"
+          if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::CreateFromDirectory((Get-Location).Path, $zipPath)
+
+          popd
+
+      - name: Upload artifact (zip)
         uses: actions/upload-artifact@v4
         with:
-          name: node-app
-          path: .
+          name: functionapp-zip
+          path: ${{ env.ZIP_NAME }}
 
   deploy:
     runs-on: windows-latest
     needs: build
-    
+
     steps:
-      - name: Download artifact from build job
+      - name: Download artifact (zip)
         uses: actions/download-artifact@v4
         with:
-          name: node-app
-      
-      - name: 'Run Azure Functions Action'
+          name: functionapp-zip
+          path: .
+
+      - name: Deploy to Azure Functions
         uses: Azure/functions-action@v1
-        id: fa
         with:
           app-name: 'extincor-pdf-worker-v3'
           slot-name: 'Production'
-          package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+          package: './${{ env.ZIP_NAME }}'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_E1BAAE0CDA9E42158B06AF120E73D8EB }}
