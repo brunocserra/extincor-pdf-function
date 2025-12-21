@@ -3,388 +3,338 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Relatório de Intervenção</title>
+  <title>Relatório de Intervenção | Extinçor</title>
 
   <style>
-    :root{
-      --ink:#1f2d3d;
-      --muted:#6b7280;
-      --brand:#0b3a67;
-      --brand-2:#0ea5e9;
-      --paper:#ffffff;
-      --bg:#f4f6f9;
-      --line:#e5e7eb;
-      --card:#ffffff;
-      --shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
-      --radius: 12px;
+    :root {
+      --brand-primary: #0b3a67;
+      --brand-accent: #0ea5e9;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --bg-soft: #f8fafc;
+      --border-color: #f1f5f9;
+      --card-bg: #ffffff;
+      --radius-lg: 16px;
+      --shadow-md: 0 4px 12px -2px rgba(15, 23, 42, 0.04);
     }
 
-    *{ box-sizing:border-box; }
-
-    html{
-      width:210mm;
-      margin:0 auto;
-      background:#d1d5db;
-      display:flex;
-      justify-content:center;
+    * { 
+      box-sizing: border-box; 
+      -webkit-print-color-adjust: exact; 
     }
 
-    body{
-      width:190mm;
-      margin:0;
-      padding:12mm 10mm;
-      background:var(--bg);
-      color:var(--ink);
-      font-family:"Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-      font-size:14px;
-      line-height:1.45;
+    /* CONFIGURAÇÃO DE FORMATO A4 COM MARGENS DE 15MM */
+    @page {
+      size: A4;
+      margin: 0; 
+      counter-increment: page;
     }
 
-    /* HEADER */
-    .header{
-      background:var(--paper);
-      border:1px solid var(--line);
-      border-radius:var(--radius);
-      box-shadow:var(--shadow);
-      overflow:hidden;
+    html {
+      background: #e2e8f0;
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px 0;
     }
 
-    .header-top{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      padding:14px 16px;
-      gap:16px;
+    body {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0;
+      padding: 15mm; /* Margens de documento restauradas */
+      background: var(--card-bg);
+      color: var(--text-main);
+      font-family: 'Inter', -apple-system, system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+      position: relative;
+      box-shadow: 0 0 30px rgba(0,0,0,0.2);
+    }
+
+    /* ESTRUTURA PARA REPETIÇÃO DE CABEÇALHO */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    thead { display: table-header-group; }
+    tbody { display: table-row-group; }
+
+    /* CABEÇALHO (CENTRALIZADO VERTICALMENTE) */
+    .header-wrapper {
+      display: flex;
+      justify-content: space-between;
+      align-items: center; 
+      padding-bottom: 20px;
+      border-bottom: 2px solid var(--brand-accent);
+      margin-bottom: 10px;
+      width: 100%;
     }
 
     .logo-container img {
-      max-height: 55px;
+      height: 55px;
       width: auto;
       display: block;
     }
 
-    .title-block{
-      text-align:right;
-      flex:1;
+    .title-block {
+      text-align: right;
     }
 
-    .title{
-      font-size:18px;
-      font-weight:700;
-      color:var(--brand);
-      margin-bottom:4px;
+    .title {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--brand-primary);
+      text-transform: uppercase;
+      margin: 0 0 4px 0;
+      letter-spacing: -0.5px;
     }
 
-    .meta{
-      display:flex;
-      justify-content:flex-end;
-      gap:14px;
-      flex-wrap:wrap;
-      font-size:12.5px;
+    .meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
     }
 
-    .pill{
-      padding:4px 10px;
-      border-radius:999px;
-      border:1px solid var(--line);
-      background:#f8fafc;
-      font-weight:600;
-      color:#111827;
+    .meta-item {
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
     }
 
-    .header-bar{
-      height:6px;
-      background:linear-gradient(90deg, var(--brand), var(--brand-2));
+    /* RODAPÉ FIXO COMPLETO */
+    .footer-fixed {
+      position: fixed;
+      bottom: 10mm; 
+      left: 15mm;   
+      right: 15mm;  
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      border-top: 1px solid var(--border-color);
+      padding-top: 10px;
+      font-size: 10px;
+      color: var(--text-muted);
+      z-index: 1000;
+      background: white;
     }
 
-    /* CONTENT */
-    .content{ margin-top:16px; }
+    .footer-info {
+      text-align: left;
+      line-height: 1.4;
+    }
 
-    .section{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:var(--radius);
-      box-shadow:var(--shadow);
-      padding:14px 16px;
-      margin:12px 0;
+    .page-counter-container {
+      font-weight: 700;
+      text-transform: uppercase;
+      background: var(--bg-soft);
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+
+    .page-counter::after {
+      content: counter(page) " de " counter(pages);
+    }
+
+    /* CONTEÚDO E SECÇÕES */
+    .content-area {
+      padding-top: 10px;
+    }
+
+    .section {
+      background: var(--card-bg);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-color);
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow-md);
       page-break-inside: avoid;
+      position: relative;
+      overflow: hidden;
     }
 
-    .section-title{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      margin-bottom:10px;
-      padding-bottom:8px;
-      border-bottom:1px solid var(--line);
+    .section::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; width: 4px; height: 100%;
+      background: var(--brand-accent);
     }
 
-    .section-title h2{
-      margin:0;
-      font-size:14px;
-      font-weight:800;
+    .section-title h2 {
+      margin: 0 0 15px 0;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--brand-primary);
+      text-transform: uppercase;
     }
 
-    .section-badge{
-      font-size:11px;
-      color:var(--muted);
-      border:1px solid var(--line);
-      padding:4px 8px;
-      border-radius:999px;
-      background:#f8fafc;
+    .grid-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
     }
 
-    .grid-2{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:12px 18px;
+    .label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 2px;
     }
 
-    /* GRELHA DE FOTOS */
+    .value { font-weight: 600; color: var(--text-main); }
+
+    .custom-list {
+      margin: 0; padding: 0;
+      list-style: none;
+    }
+
+    .custom-list li {
+      padding: 4px 0;
+      border-bottom: 1px solid var(--bg-soft);
+    }
+
+    .custom-list li::before {
+      content: "•";
+      color: var(--brand-accent);
+      margin-right: 8px;
+    }
+
     .photo-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 12px;
-      margin-top: 10px;
     }
 
     .photo-item {
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 10px;
       overflow: hidden;
-      background: #f8fafc;
+      aspect-ratio: 4 / 3;
+      border: 1px solid var(--border-color);
+      background: #f1f5f9;
     }
 
     .photo-item img {
       width: 100%;
-      max-width: 450px; 
-      height: auto;
-      display: block;
-      image-rendering: -webkit-optimize-contrast; 
+      height: 100%;
+      object-fit: cover;
     }
 
-    .field{
-      display:flex;
-      gap:8px;
-    }
+    .text { white-space: pre-wrap; }
 
-    .label{
-      min-width:70px;
-      font-weight:600;
-      color:var(--muted);
-    }
-
-    .value{
-      font-weight:600;
-      color:#111827;
-    }
-
-    .value.normal{
-      font-weight:500;
-    }
-
-    .divider{
-      height:1px;
-      background:var(--line);
-      margin:12px 0;
-    }
-
-    .block-title{
-      font-weight:800;
-      margin:0 0 6px 0;
-      font-size:13px;
-    }
-
-    .text{
-      white-space:pre-wrap;
-      font-weight:500;
-    }
-
-    .two-columns{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:18px;
-    }
-
-    .list{
-      margin:0;
-      padding-left:16px;
-    }
-
-    .list li{
-      margin:4px 0;
-      list-style-type: disc; /* Garante que o bullet aparece */
-    }
-
-    /* FOOTER */
-    .footer{
-      margin-top:16px;
-      text-align:center;
-      color:#e5e7eb;
-      background:var(--brand);
-      border-radius:var(--radius);
-      padding:10px 12px;
-      font-size:11.5px;
-    }
-
-    @page{
-      size:A4;
-      margin:15mm;
-    }
-
-    @media print{
-      html, body{
-        width:210mm;
-        background:#fff;
-      }
-      body{ padding:0; }
-      .section, .header{ box-shadow:none; }
-      .footer{
-        position:fixed;
-        left:0;
-        right:0;
-        bottom:0;
-        border-radius:0;
-      }
+    @media print {
+      html, body { background: white; box-shadow: none; width: 100%; }
+      .section { box-shadow: none; border: 1px solid #eee; }
+      .footer-fixed { position: fixed; bottom: 10mm; }
     }
   </style>
 </head>
 
 <body>
 
-  <div class="header">
-    <div class="header-top">
-      <div class="logo-container">
-        <img src="https://extincorpdfsstore.blob.core.windows.net/assetsextincor/extlogo" 
-             alt="Extinçor Logo">
-      </div>
-
-      <div class="title-block">
-        <div class="title">Relatório de Intervenção</div>
-        <div class="meta">
-          <span class="pill">Nº Relatório: {{header.reportNumber}}</span>
-          <span class="pill">Data: {{header.date}}</span>
-        </div>
-      </div>
+  <div class="footer-fixed">
+    <div class="footer-info">
+      Documento gerado automaticamente. Para mais informações, entre em contacto com a <strong>Extinçor</strong>.<br>
+      © 2025 Extinçor - Segurança Contra Incêndios
     </div>
-    <div class="header-bar"></div>
+    <div class="page-counter-container">
+      Página <span class="page-counter"></span>
+    </div>
   </div>
 
-  <div class="content">
+  <table>
+    <thead>
+      <tr>
+        <td>
+          <div class="header-wrapper">
+            <div class="logo-container">
+              <img src="https://extincorpdfsstore.blob.core.windows.net/assetsextincor/extlogo" alt="Extinçor">
+            </div>
+            <div class="title-block">
+              <h1 class="title">Relatório Técnico</h1>
+              <div class="meta">
+                <span class="meta-item">RELATÓRIO: <strong>{{header.reportNumber}}</strong></span>
+                <span class="meta-item">DATA: <strong>{{header.date}}</strong></span>
+              </div>
+            </div>
+          </div>
+        </td>
+      </tr>
+    </thead>
 
-    <div class="section">
-      <div class="section-title">
-        <h2>Informações do Cliente</h2>
-        <span class="section-badge">Dados</span>
-      </div>
+    <tbody>
+      <tr>
+        <td>
+          <div class="content-area">
 
-      <div class="grid-2">
-        <div class="field">
-          <div class="label">NIF</div>
-          <div class="value">{{cliente.nif}}</div>
-        </div>
+            <section class="section">
+              <div class="section-title"><h2>Informações do Cliente</h2></div>
+              <div class="grid-layout">
+                <div style="grid-column: 1 / -1;">
+                  <span class="label">Nome do Cliente</span>
+                  <span class="value">{{cliente.nome}}</span>
+                </div>
+                <div><span class="label">NIF</span><span class="value">{{cliente.nif}}</span></div>
+                <div><span class="label">E-mail</span><span class="value">{{cliente.email}}</span></div>
+                <div style="grid-column: 1 / -1;"><span class="label">Morada</span><span class="value">{{cliente.morada}}</span></div>
+              </div>
+            </section>
 
-        <div class="field">
-          <div class="label">E-mail</div>
-          <div class="value normal">{{cliente.email}}</div>
-        </div>
+            <section class="section">
+              <div class="section-title"><h2>Detalhes da Intervenção</h2></div>
+              <div class="grid-layout" style="margin-bottom: 15px;">
+                <div><span class="label">Tipo</span><span class="value">{{relatorio.tipo}}</span></div>
+                <div><span class="label">Área</span><span class="value">{{relatorio.area}}</span></div>
+              </div>
+              <span class="label">Descrição</span>
+              <div style="background: var(--bg-soft); padding: 12px; border-radius: 8px; margin-top: 5px;">
+                <div class="text">{{relatorio.descricao}}</div>
+              </div>
+              <div style="margin-top: 15px;">
+                <span class="label">Situação Final</span>
+                <span class="value" style="color: var(--brand-primary); font-weight: 700;">{{relatorio.situacaoFinal}}</span>
+              </div>
+            </section>
 
-        <div class="field" style="grid-column:1/-1;">
-          <div class="label">Nome</div>
-          <div class="value normal">{{cliente.nome}}</div>
-        </div>
+            <section class="section">
+              <div class="section-title"><h2>Recursos Utilizados</h2></div>
+              <div class="grid-layout">
+                <div>
+                  <span class="label">Mão de Obra</span>
+                  <ul class="custom-list">
+                    {{#maoObra}}<li>{{.}}</li>{{/maoObra}}
+                  </ul>
+                </div>
+                <div>
+                  <span class="label">Materiais / Peças</span>
+                  <ul class="custom-list">
+                    {{#material}}<li>{{.}}</li>{{/material}}
+                  </ul>
+                </div>
+              </div>
+            </section>
 
-        <div class="field" style="grid-column:1/-1;">
-          <div class="label">Morada</div>
-          <div class="value normal">{{cliente.morada}}</div>
-        </div>
-      </div>
-    </div>
+            {{#temFotos}}
+            <section class="section">
+              <div class="section-title"><h2>Registo Fotográfico</h2></div>
+              <div class="photo-grid">
+                {{#fotos}}
+                <div class="photo-item"><img src="{{.}}" alt="Foto"></div>
+                {{/fotos}}
+              </div>
+            </section>
+            {{/temFotos}}
 
-    <div class="section">
-      <div class="section-title">
-        <h2>Relatório Técnico</h2>
-        <span class="section-badge">Intervenção</span>
-      </div>
-
-      <div class="grid-2">
-        <div class="field">
-          <div class="label">Tipo</div>
-          <div class="value normal">{{relatorio.tipo}}</div>
-        </div>
-        <div class="field">
-          <div class="label">Área</div>
-          <div class="value normal">{{relatorio.area}}</div>
-        </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <div class="block-title">Descrição da intervenção</div>
-      <div class="text">{{relatorio.descricao}}</div>
-
-      {{#relatorio.observacoes}}
-      <div class="divider"></div>
-      <div class="block-title">Observações</div>
-      <div class="text">{{relatorio.observacoes}}</div>
-      {{/relatorio.observacoes}}
-
-      <div class="divider"></div>
-
-      <div class="field">
-        <div class="label">Situação final</div>
-        <div class="value normal">{{relatorio.situacaoFinal}}</div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">
-        <h2>Mão de Obra e Material</h2>
-        <span class="section-badge">Detalhe</span>
-      </div>
-
-      <div class="two-columns">
-        <div>
-          <div class="block-title">Mão de Obra</div>
-          <ul class="list">
-            {{#maoObra}}
-              <li>{{.}}</li>
-            {{/maoObra}}
-          </ul>
-        </div>
-
-        <div>
-          <div class="block-title">Material</div>
-          <ul class="list">
-            {{#material}}
-              <li>{{.}}</li>
-            {{/material}}
-          </ul>
-        </div>
-      </div>
-    </div>
-
-    {{#temFotos}}
-    <div class="section">
-      <div class="section-title">
-        <h2>Fotografias</h2>
-        <span class="section-badge">Anexos</span>
-      </div>
-      <div class="photo-grid">
-        {{#fotos}}
-        <div class="photo-item">
-          <img src="{{.}}" alt="Registo Fotográfico">
-        </div>
-        {{/fotos}}
-      </div>
-    </div>
-    {{/temFotos}}
-
-  </div>
-
-  <div class="footer">
-    Documento gerado automaticamente. Para mais informações, entre em contacto com a Extinçor.
-  </div>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
 
 </body>
 </html>
