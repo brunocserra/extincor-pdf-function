@@ -34,7 +34,6 @@
     }
 
     body {
-      counter-reset: page 1;
       width: 210mm;
       height: auto; 
       margin: 0;
@@ -92,23 +91,20 @@
       left: 10mm;
       right: 10mm;
       display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
+      justify-content: center; /* Centralizado sem o contador de páginas */
       border-top: 1px solid var(--border-color);
       padding-top: 8px;
       font-size: 11px;
       color: var(--text-muted);
       background: white;
+      text-align: center;
     }
-
-    .page-counter-container { font-weight: 700; text-transform: uppercase; background: var(--bg-soft); padding: 4px 8px; border-radius: 4px; }
-    .page-counter::after { content: counter(page); }
 
     .section {
       background: var(--card-bg);
       border-radius: var(--radius-lg);
       border: 1px solid var(--border-color);
-      padding: 0; /* Removido padding para o título encostar nas bordas se necessário */
+      padding: 0;
       margin-bottom: 16px;
       box-shadow: var(--shadow-md);
       page-break-inside: avoid;
@@ -123,15 +119,14 @@
 
     .section::before { content: ""; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--brand-accent); z-index: 10; }
     
-    /* AJUSTE SOLICITADO: Títulos mais destacados */
     .section-title h2 { 
       margin: 0; 
       padding: 12px 20px;
-      font-size: 15px; /* Aumentado */
+      font-size: 15px;
       font-weight: 800; 
       color: var(--brand-primary); 
       text-transform: uppercase; 
-      background: var(--bg-soft); /* Fundo suave */
+      background: var(--bg-soft);
       border-bottom: 1px solid var(--border-color);
       letter-spacing: 0.5px;
     }
@@ -161,10 +156,7 @@
   <div class="footer-fixed">
     <div class="footer-info">
       Documento gerado automaticamente pela <strong>Extinçor</strong>.<br>
-      © 2025 Extinçor - Segurança Contra Incêndios
-    </div>
-    <div class="page-counter-container">
-      Página <span class="page-counter"></span>
+      © 2025 Extinçor - Engenharia e Segurança, Lda.
     </div>
   </div>
 
