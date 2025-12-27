@@ -10,198 +10,130 @@ const { BlobServiceClient } = require("@azure/storage-blob");
 const { QueueServiceClient } = require("@azure/storage-queue");
 const FormData = require("form-data");
 
-// =====================
-// CONFIGURAÇÕES
-// =====================
-const GOTENBERG_URL = process.env.GOTENBERG_URL;
-const AZURE_STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING;
-const CONTAINER_NAME = process.env.PDF_BLOB_CONTAINER || "pdf-reports";
-const BASE_PREFIX = process.env.PDF_BLOB_PREFIX || ""; 
-
-const QUEUE_CONNECTION = process.env.PDF_QUEUE_CONNECTION || "PDF_QUEUE_STORAGE";
-const RESULTS_QUEUE_NAME = process.env.PDF_RESULTS_QUEUE_NAME || "pdf-results";
-const RESULTS_CONN_STR = process.env.PDF_RESULTS_CONNECTION_STRING || process.env[QUEUE_CONNECTION];
-const JOBS_QUEUE_NAME = process.env.PDF_QUEUE_NAME || "pdf-generation-jobs";
-
-// =====================
-// HELPERS
-// =====================
-
-// Função para formatar números para o padrão 1.234,56
+// Helper de Formatação PT-PT
 const fmt = (val) => {
     const num = parseFloat(val) || 0;
     return num.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-function log(context, message) {
-    if (context && typeof context.log === "function") return context.log(message);
-    console.log(message);
-}
-
-function normalizeList(arrOrNull) {
-    if (!arrOrNull) return [];
-    const out = [];
-    const pushSplit = (value) => {
-        if (value == null) return;
-        const str = String(value).trim();
-        if (!str || str === "[object Object]") return;
-        str.split(";").map(p => p.trim()).filter(p => p.length > 0).forEach(p => out.push(p));
-    };
-    if (typeof arrOrNull === "string") pushSplit(arrOrNull);
-    else if (Array.isArray(arrOrNull)) {
-        for (const item of arrOrNull) {
-            if (typeof item === "string") pushSplit(item);
-            else if (item && typeof item === "object") {
-                pushSplit(item.Value ?? item.Result ?? item.Name ?? item.Label ?? "");
-            }
-        }
-    }
-    return out;
-}
-
-async function fetchAndOptimizePhoto(url, i, context) {
-    try {
-        const r = await axios.get(url, { responseType: "arraybuffer", timeout: 30000 });
-        if (!r.data) return null;
-        const outBuf = await sharp(Buffer.from(r.data))
-            .rotate()
-            .resize({ width: 1200, withoutEnlargement: true })
-            .jpeg({ quality: 70, mozjpeg: true })
-            .toBuffer();
-        return { filename: `img_${String(i + 1).padStart(2, "0")}.jpg`, buffer: outBuf };
-    } catch (e) {
-        log(context, `[IMG ERR] Falha na foto ${i + 1}: ${e.message}`);
-        return null;
-    }
-}
-
-// =====================
-// HANDLER GENÉRICO
-// =====================
-
 app.storageQueue("GeneratePdfFromQueue", {
-    queueName: JOBS_QUEUE_NAME,
-    connection: QUEUE_CONNECTION,
+    queueName: process.env.PDF_QUEUE_NAME || "pdf-generation-jobs",
+    connection: "PDF_QUEUE_STORAGE",
 
     handler: async (queueItem, context) => {
         const rawPayload = typeof queueItem === "string" ? JSON.parse(queueItem) : queueItem;
         const data = rawPayload?.data ?? rawPayload ?? {};
 
-        const templateName = data.templateName || "Preventiva"; 
-        const reportId = data.reportId || data.header?.reportNumber || `DOC_${Date.now()}`;
-        const subFolder = data.subFolder || ""; 
-        const dynamicPrefix = `${BASE_PREFIX}${subFolder}`.replace(/\/{2,}/g, "/");
-
-        log(context, `[EXE] Template: ${templateName} | Pasta: ${dynamicPrefix} | ID: ${reportId}`);
+        const templateName = data.templateName || "Orcamento"; 
+        const reportId = data.reportId || `DOC_${Date.now()}`;
+        const subFolder = data.subFolder || "";
+        const dynamicPrefix = `${process.env.PDF_BLOB_PREFIX || ""}${subFolder}`.replace(/\/{2,}/g, "/");
 
         try {
-            // 2. PROCESSAMENTO DE FOTOS
+            // 1. PROCESSAMENTO DE IMAGENS
             const photoAssets = [];
             const localPhotoNames = [];
-            const rawFotos = normalizeList(data.fotos);
-            for (let i = 0; i < rawFotos.length; i++) {
-                const photo = await fetchAndOptimizePhoto(rawFotos[i], i, context);
-                if (photo) {
-                    photoAssets.push(photo);
-                    localPhotoNames.push(photo.filename); 
+            if (data.fotos) {
+                const rawFotos = Array.isArray(data.fotos) ? data.fotos : String(data.fotos).split(";").filter(f => f.trim());
+                for (let i = 0; i < rawFotos.length; i++) {
+                    try {
+                        const r = await axios.get(rawFotos[i].trim(), { responseType: "arraybuffer", timeout: 20000 });
+                        const buf = await sharp(Buffer.from(r.data)).rotate().resize({ width: 1200, withoutEnlargement: true }).jpeg({ quality: 70 }).toBuffer();
+                        const filename = `img_${i}.jpg`;
+                        photoAssets.push({ filename, buffer: buf });
+                        localPhotoNames.push(filename);
+                    } catch (e) { context.log(`Erro foto ${i}`); }
                 }
             }
 
-            // 3. VIEWMODEL COM TRATAMENTO DE VALORES E GRUPOS
-            const viewModel = {
+            // 2. CONSTRUÇÃO DO VIEWMODEL BASE
+            let viewModel = {
                 ...data,
                 reportId,
                 fotos: localPhotoNames,
-                temFotos: localPhotoNames.length > 0,
-                header: data.header ? {
-                    ...data.header,
-                    totalLiquido: fmt(data.header.totalLiquido),
-                    totalFinal: fmt(data.header.totalFinal),
-                    valorIva: fmt((parseFloat(data.header.totalFinal) || 0) - (parseFloat(data.header.totalLiquido) || 0))
-                } : {},
-                maoObra: normalizeList(data.maoObra),
-                material: normalizeList(data.material)
+                temFotos: localPhotoNames.length > 0
             };
 
-            // Lógica de Produtos: Formatação e Totais de Secção
-            if (data.produtos && Array.isArray(data.produtos)) {
-                const multiGrupo = data.produtos.length > 1;
-                viewModel.produtos = data.produtos.map(grupo => {
-                    let somaSecao = 0;
-                    const itensProcessados = (grupo.itens || []).map(item => {
-                        somaSecao += (parseFloat(item.total) || 0);
-                        return {
-                            ...item,
-                            preco: fmt(item.preco),
-                            total: fmt(item.total)
-                        };
+            // 3. LÓGICA ESPECÍFICA: ORÇAMENTOS (VALORES MONETÁRIOS E DESCONTOS)
+            if (templateName === "Orcamento" || data.produtos) {
+                const h = data.header || {};
+                const totalLiq = parseFloat(h.totalLiquido) || 0;
+                const totalFim = parseFloat(h.totalFinal) || 0;
+                const descFin = parseFloat(h.descontoFinanceiroValor) || 0;
+                const vIva = Math.max(0, totalFim - totalLiq + descFin);
+
+                viewModel.header = {
+                    ...h,
+                    totalBruto: fmt(h.totalBruto),
+                    totalDescontosItens: fmt(h.totalDescontosItens),
+                    descontoFinanceiro: descFin > 0 ? fmt(descFin) : null,
+                    totalLiquido: fmt(totalLiq),
+                    valorIva: fmt(vIva),
+                    totalFinal: fmt(totalFim),
+                    taxaIva: h.taxaIva ? parseFloat(h.taxaIva).toFixed(0) : "0"
+                };
+
+                if (Array.isArray(data.produtos)) {
+                    const multiGrupo = data.produtos.length > 1;
+                    viewModel.produtos = data.produtos.map(g => {
+                        let somaG = 0;
+                        const itns = (g.itens || []).map(i => {
+                            const t = parseFloat(i.total) || 0;
+                            somaG += t;
+                            return { 
+                                ...i, 
+                                preco: fmt(i.preco), 
+                                desconto: parseFloat(i.desconto) > 0 ? fmt(i.desconto) : null,
+                                total: fmt(t) 
+                            };
+                        });
+                        return { ...g, itens: itns, totalDoGrupo: multiGrupo ? fmt(somaG) : null };
                     });
-                    return {
-                        ...grupo,
-                        itens: itensProcessados,
-                        // Só envia totalDoGrupo se houver mais que um grupo no total
-                        totalDoGrupo: multiGrupo ? fmt(somaSecao) : null
-                    };
-                });
+                }
             }
 
-            // 4. RENDERIZAÇÃO
+            // 4. LÓGICA ESPECÍFICA: PREVENTIVAS (MATERIAIS E MÃO DE OBRA)
+            if (templateName === "Preventiva") {
+                // Formatação simples para checklists ou materiais se houver preços envolvidos
+                if (data.maoDeObra) {
+                    viewModel.maoDeObra = data.maoDeObra.map(m => ({
+                        ...m,
+                        valor: m.valor ? fmt(m.valor) : null
+                    }));
+                }
+                // Materiais costumam ser apenas listagem de QTD e Nome
+                if (data.materiais) {
+                    viewModel.materiais = data.materiais;
+                }
+            }
+
+            // 5. RENDERIZAÇÃO E GERAÇÃO DO PDF
             const templatePath = path.join(__dirname, `${templateName}.html`);
-            if (!fs.existsSync(templatePath)) throw new Error(`Arquivo ${templateName}.html não encontrado.`);
-            const renderedHtml = mustache.render(fs.readFileSync(templatePath, "utf8"), viewModel);
+            const html = mustache.render(fs.readFileSync(templatePath, "utf8"), viewModel);
 
-            // 5. AZURE STORAGE
-            const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
-            const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
-            await containerClient.createIfNotExists();
-
-            // 6. UPLOAD DEBUG (HTML)
-            const debugBlobName = `${dynamicPrefix}debug_${reportId}.html`.replace(/^\//, "");
-            await containerClient.getBlockBlobClient(debugBlobName).uploadData(Buffer.from(renderedHtml, "utf8"), {
-                blobHTTPHeaders: { blobContentType: "text/html" }
-            });
-
-            // 7. GOTENBERG
             const form = new FormData();
-            form.append("files", Buffer.from(renderedHtml, "utf8"), { filename: "index.html", contentType: "text/html" });
+            form.append("files", Buffer.from(html, "utf8"), { filename: "index.html", contentType: "text/html" });
             photoAssets.forEach(a => form.append("files", a.buffer, { filename: a.filename, contentType: "image/jpeg" }));
-            form.append("pdfFormat", "PDF/A-1b");
 
-            const response = await axios.post(GOTENBERG_URL, form, {
-                responseType: "arraybuffer",
+            const res = await axios.post(process.env.GOTENBERG_URL, form, { 
+                responseType: "arraybuffer", 
                 headers: form.getHeaders(),
-                timeout: 120000
+                timeout: 120000 
             });
 
-            // 8. UPLOAD PDF FINAL
-            const pdfBlobName = `${dynamicPrefix}${reportId}.pdf`.replace(/^\//, "");
-            const blockBlobClient = containerClient.getBlockBlobClient(pdfBlobName);
-            await blockBlobClient.uploadData(Buffer.from(response.data), {
-                blobHTTPHeaders: { blobContentType: "application/pdf" }
-            });
+            // 6. STORAGE E CALLBACK
+            const blobServiceClient = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
+            const containerClient = blobServiceClient.getContainerClient(process.env.PDF_BLOB_CONTAINER || "pdf-reports");
+            const pdfPath = `${dynamicPrefix}${reportId}.pdf`.replace(/^\//, "");
+            const blockBlobClient = containerClient.getBlockBlobClient(pdfPath);
+            await blockBlobClient.uploadData(Buffer.from(res.data), { blobHTTPHeaders: { blobContentType: "application/pdf" } });
 
-            // 9. CALLBACK
-            const qsc = QueueServiceClient.fromConnectionString(RESULTS_CONN_STR);
-            const qc = qsc.getQueueClient(RESULTS_QUEUE_NAME);
-            await qc.createIfNotExists();
-            await qc.sendMessage(Buffer.from(JSON.stringify({
-                status: "SUCCEEDED",
-                reportId,
-                templateUsed: templateName,
-                pdfUrl: blockBlobClient.url,
-                blobPath: pdfBlobName,
-                dataverse: data.dataverse
-            })).toString("base64"));
-
-            log(context, `[OK] Sucesso: ${pdfBlobName}`);
+            const qsc = QueueServiceClient.fromConnectionString(process.env.PDF_RESULTS_CONNECTION_STRING || process.env.AZURE_STORAGE_CONNECTION_STRING);
+            const qc = qsc.getQueueClient(process.env.PDF_RESULTS_QUEUE_NAME || "pdf-results");
+            await qc.sendMessage(Buffer.from(JSON.stringify({ status: "SUCCEEDED", reportId, pdfUrl: blockBlobClient.url, dataverse: data.dataverse })).toString("base64"));
 
         } catch (err) {
-            log(context, `[FATAL] ${err.message}`);
-            try {
-                const qsc = QueueServiceClient.fromConnectionString(RESULTS_CONN_STR);
-                const qc = qsc.getQueueClient(RESULTS_QUEUE_NAME);
-                await qc.sendMessage(Buffer.from(JSON.stringify({ status: "FAILED", reportId, error: err.message })).toString("base64"));
-            } catch (e) {}
+            context.log(`Erro: ${err.message}`);
             throw err;
         }
     }
