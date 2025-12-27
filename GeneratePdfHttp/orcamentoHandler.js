@@ -7,14 +7,13 @@ const { fmt } = require("./sharedUtils");
  * @param {Object} data - Payload bruto recebido do Power Apps
  */
 module.exports = function(viewModel, data) {
-    // 1. Processamento do Cabeçalho (Header)
+    // 1. Processamento do Cabeçalho (Header) 
     const h = data.header || {};
     const totalLiq = parseFloat(h.totalLiquido) || 0;
     const totalFim = parseFloat(h.totalFinal) || 0;
     const descFin = parseFloat(h.descontoFinanceiroValor) || 0;
     
-    // Cálculo do valor do IVA (Total Final - (Total Líquido - Desconto Financeiro))
-    // Usamos Math.max(0, ...) para evitar valores negativos por erros de arredondamento
+    // Cálculo do valor do IVA (Total Final - Total Líquido) 
     const vIva = Math.max(0, totalFim - totalLiq);
 
     viewModel.header = {
@@ -28,12 +27,14 @@ module.exports = function(viewModel, data) {
         taxaIva: h.taxaIva ? parseFloat(h.taxaIva).toFixed(0) : "0"
     };
 
-    // 2. Processamento dos Grupos e Produtos
+    // Inicializar lista de URLs para a Azure Function descarregar [cite: 4]
+    const listaParaDownload = [];
+
+    // 2. Processamento dos Grupos e Produtos 
     if (data.produtos && Array.isArray(data.produtos)) {
         viewModel.produtos = data.produtos.map(g => {
             let somaGrupo = 0;
 
-            // Mapeamento dos itens dentro de cada grupo
             const itensProcessados = (g.itens || []).map(i => {
                 const qtd = parseFloat(i.qty) || 0;
                 const precoUnit = parseFloat(i.preco) || 0;
@@ -42,14 +43,19 @@ module.exports = function(viewModel, data) {
 
                 somaGrupo += totalLinha;
 
-                // Construção do URL da Imagem (Azure Blob Storage)
-                // Verifica se o prod_id existe e não é "0" ou vazio
+                // Lógica de Imagem baseada no prod_id (ex: PRD-100044) [cite: 3, 5]
                 let fotoUrl = null;
-                const idLimpo = i.prod_id ? String(i.prod_id).trim() : "";
+                const idOriginal = i.prod_id ? String(i.prod_id).trim() : "";
                 
-                if (idLimpo !== "" && idLimpo !== "0") {
-                    // O nome do ficheiro no Azure deve ser [ID_DO_PRODUTO].jpg
-                    fotoUrl = `https://extincorpdfsstore.blob.core.windows.net/produtos/${idLimpo}.jpg`;
+                if (idOriginal !== "" && idOriginal !== "0") {
+                    // Criamos o URL absoluto para o Azure Blob Storage 
+                    const urlAzure = `https://extincorpdfsstore.blob.core.windows.net/produtos/${idOriginal}.jpg`;
+                    
+                    // Adicionamos à lista que o GeneratePdfHttp.js vai usar para o axios.get [cite: 4]
+                    listaParaDownload.push(urlAzure);
+                    
+                    // Definimos o URL para o HTML (O HTML usará o link direto do Azure) 
+                    fotoUrl = urlAzure;
                 }
 
                 return { 
@@ -65,19 +71,18 @@ module.exports = function(viewModel, data) {
             return { 
                 ...g, 
                 itens: itensProcessados, 
-                // Só mostra o total da secção se existir mais do que um grupo no orçamento
                 totalDoGrupo: data.produtos.length > 1 ? fmt(somaGrupo) : null 
             };
         });
     } else {
-        // Fallback caso a lista de produtos venha vazia ou mal formatada
         viewModel.produtos = [];
     }
 
-    // 3. Informações de Cliente (Passagem direta)
-    viewModel.cliente = data.cliente || {};
+    // 3. Importante: Injetar a lista de fotos no viewModel para o GeneratePdfHttp processar [cite: 4]
+    // Isto garante que se o Gotenberg precisar de assets locais, a função os descarregue.
+    viewModel.fotosRaw = listaParaDownload;
 
-    // 4. Metadados do Relatório
+    viewModel.cliente = data.cliente || {};
     viewModel.reportId = data.reportId || "S/N";
 
     return viewModel;
