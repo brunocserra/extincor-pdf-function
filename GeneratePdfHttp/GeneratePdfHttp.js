@@ -10,13 +10,11 @@ const { BlobServiceClient } = require("@azure/storage-blob");
 const { QueueServiceClient } = require("@azure/storage-queue");
 const FormData = require("form-data");
 
-// Helper de Formatação PT-PT
 const fmt = (val) => {
     const num = parseFloat(val) || 0;
     return num.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-// Helper para limpar listas do PowerApps/Dataverse (Evita o [object Object])
 function normalizeList(arrOrNull) {
     if (!arrOrNull) return [];
     const out = [];
@@ -27,12 +25,10 @@ function normalizeList(arrOrNull) {
         const parts = str.split(";").map((p) => p.trim()).filter((p) => p.length > 0);
         for (const p of parts) out.push(p);
     };
-
     if (typeof arrOrNull === "string") {
         pushSplit(arrOrNull);
         return out;
     }
-
     if (Array.isArray(arrOrNull)) {
         for (const item of arrOrNull) {
             if (typeof item === "string") {
@@ -60,7 +56,6 @@ app.storageQueue("GeneratePdfFromQueue", {
         const dynamicPrefix = `${process.env.PDF_BLOB_PREFIX || ""}${subFolder}`.replace(/\/{2,}/g, "/");
 
         try {
-            // 1. PROCESSAMENTO DE IMAGENS
             const photoAssets = [];
             const localPhotoNames = [];
             const rawFotoUrls = normalizeList(data.fotos);
@@ -77,7 +72,6 @@ app.storageQueue("GeneratePdfFromQueue", {
                 }
             }
 
-            // 2. CONSTRUÇÃO DO VIEWMODEL BASE
             let viewModel = {
                 ...data,
                 reportId,
@@ -85,7 +79,6 @@ app.storageQueue("GeneratePdfFromQueue", {
                 temFotos: localPhotoNames.length > 0
             };
 
-            // 3. LÓGICA ESPECÍFICA: ORÇAMENTOS (CORREÇÃO DOS DESCONTOS AQUI)
             if (templateName === "Orcamento" || data.produtos) {
                 const h = data.header || {};
                 const totalLiq = parseFloat(h.totalLiquido) || 0;
@@ -109,21 +102,15 @@ app.storageQueue("GeneratePdfFromQueue", {
                         let somaG = 0;
                         const itns = (g.itens || []).map(i => {
                             const t = parseFloat(i.total) || 0;
-                            const d = parseFloat(i.desconto) || 0; // Captura o desconto individual
+                            const d = parseFloat(i.desconto) || 0;
                             somaG += t;
-                            return { 
-                                ...i, 
-                                preco: fmt(i.preco), 
-                                total: fmt(t),
-                                desconto: d > 0 ? fmt(d) : null // ADICIONADO: Agora o desconto vai para o template
-                            };
+                            return { ...i, preco: fmt(i.preco), total: fmt(t), desconto: d > 0 ? fmt(d) : null };
                         });
                         return { ...g, itens: itns, totalDoGrupo: data.produtos.length > 1 ? fmt(somaG) : null };
                     });
                 }
             }
 
-            // 4. LÓGICA ESPECÍFICA: PREVENTIVAS / RELATÓRIOS
             if (templateName === "Preventiva") {
                 viewModel.maoObra = normalizeList(data.maoObra || data.maoDeObra);
                 viewModel.material = normalizeList(data.material || data.materiais);
@@ -131,7 +118,6 @@ app.storageQueue("GeneratePdfFromQueue", {
                 viewModel.relatorio = data.relatorio || {};
             }
 
-            // 5. RENDERIZAÇÃO E GERAÇÃO DO PDF
             const templatePath = path.join(__dirname, `${templateName}.html`);
             const html = mustache.render(fs.readFileSync(templatePath, "utf8"), viewModel);
 
@@ -145,21 +131,31 @@ app.storageQueue("GeneratePdfFromQueue", {
                 timeout: 120000 
             });
 
-            // 6. STORAGE E CALLBACK
+            // --- STORAGE ---
             const blobServiceClient = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
-            const containerClient = blobServiceClient.getContainerClient(process.env.PDF_BLOB_CONTAINER || "pdf-reports");
-            const pdfPath = `${dynamicPrefix}${reportId}.pdf`.replace(/^\//, "");
-            const blockBlobClient = containerClient.getBlockBlobClient(pdfPath);
+            const containerName = process.env.PDF_BLOB_CONTAINER || "pdf-reports";
+            const containerClient = blobServiceClient.getContainerClient(containerName);
+            
+            // O segredo está aqui: o blobPath tem de ser exatamente o que o Flow espera
+            const pdfBlobName = `${dynamicPrefix}${reportId}.pdf`.replace(/\/{2,}/g, "/").replace(/^\//, "");
+            const blockBlobClient = containerClient.getBlockBlobClient(pdfBlobName);
             await blockBlobClient.uploadData(Buffer.from(res.data), { blobHTTPHeaders: { blobContentType: "application/pdf" } });
 
+            // --- RESULTADO PARA O POWER AUTOMATE ---
             const qsc = QueueServiceClient.fromConnectionString(process.env.PDF_RESULTS_CONNECTION_STRING || process.env.AZURE_STORAGE_CONNECTION_STRING);
             const qc = qsc.getQueueClient(process.env.PDF_RESULTS_QUEUE_NAME || "pdf-results");
-            await qc.sendMessage(Buffer.from(JSON.stringify({ 
+            
+            // Ajustei o JSON de saída para incluir explicitamente o blobName no nível que o Flow procura
+            const resultPayload = { 
                 status: "SUCCEEDED", 
                 reportId, 
-                pdfUrl: blockBlobClient.url, 
+                pdfUrl: blockBlobClient.url,
+                blobName: pdfBlobName, // ADICIONADO para o Flow não dar erro de "null or empty"
+                containerName: containerName,
                 dataverse: data.dataverse 
-            })).toString("base64"));
+            };
+
+            await qc.sendMessage(Buffer.from(JSON.stringify(resultPayload)).toString("base64"));
 
         } catch (err) {
             context.log(`Erro fatal: ${err.message}`);
