@@ -16,6 +16,36 @@ const fmt = (val) => {
     return num.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+// Helper para limpar listas do PowerApps/Dataverse (Evita o [object Object])
+function normalizeList(arrOrNull) {
+    if (!arrOrNull) return [];
+    const out = [];
+    const pushSplit = (value) => {
+        if (value == null) return;
+        const str = String(value).trim();
+        if (!str || str === "[object Object]") return;
+        const parts = str.split(";").map((p) => p.trim()).filter((p) => p.length > 0);
+        for (const p of parts) out.push(p);
+    };
+
+    if (typeof arrOrNull === "string") {
+        pushSplit(arrOrNull);
+        return out;
+    }
+
+    if (Array.isArray(arrOrNull)) {
+        for (const item of arrOrNull) {
+            if (typeof item === "string") {
+                pushSplit(item);
+            } else if (item && typeof item === "object") {
+                const val = item.Value ?? item.Result ?? item.Name ?? item.Label ?? "";
+                pushSplit(val);
+            }
+        }
+    }
+    return out;
+}
+
 app.storageQueue("GeneratePdfFromQueue", {
     queueName: process.env.PDF_QUEUE_NAME || "pdf-generation-jobs",
     connection: "PDF_QUEUE_STORAGE",
@@ -33,16 +63,17 @@ app.storageQueue("GeneratePdfFromQueue", {
             // 1. PROCESSAMENTO DE IMAGENS
             const photoAssets = [];
             const localPhotoNames = [];
-            if (data.fotos) {
-                const rawFotos = Array.isArray(data.fotos) ? data.fotos : String(data.fotos).split(";").filter(f => f.trim());
-                for (let i = 0; i < rawFotos.length; i++) {
+            const rawFotoUrls = normalizeList(data.fotos);
+
+            if (rawFotoUrls.length > 0) {
+                for (let i = 0; i < rawFotoUrls.length; i++) {
                     try {
-                        const r = await axios.get(rawFotos[i].trim(), { responseType: "arraybuffer", timeout: 20000 });
+                        const r = await axios.get(rawFotoUrls[i].trim(), { responseType: "arraybuffer", timeout: 20000 });
                         const buf = await sharp(Buffer.from(r.data)).rotate().resize({ width: 1200, withoutEnlargement: true }).jpeg({ quality: 70 }).toBuffer();
                         const filename = `img_${i}.jpg`;
                         photoAssets.push({ filename, buffer: buf });
                         localPhotoNames.push(filename);
-                    } catch (e) { context.log(`Erro foto ${i}`); }
+                    } catch (e) { context.log(`Erro foto ${i}: ${e.message}`); }
                 }
             }
 
@@ -54,7 +85,7 @@ app.storageQueue("GeneratePdfFromQueue", {
                 temFotos: localPhotoNames.length > 0
             };
 
-            // 3. LÓGICA ESPECÍFICA: ORÇAMENTOS (VALORES MONETÁRIOS E DESCONTOS)
+            // 3. LÓGICA ESPECÍFICA: ORÇAMENTOS (CORREÇÃO DOS DESCONTOS AQUI)
             if (templateName === "Orcamento" || data.produtos) {
                 const h = data.header || {};
                 const totalLiq = parseFloat(h.totalLiquido) || 0;
@@ -74,37 +105,30 @@ app.storageQueue("GeneratePdfFromQueue", {
                 };
 
                 if (Array.isArray(data.produtos)) {
-                    const multiGrupo = data.produtos.length > 1;
                     viewModel.produtos = data.produtos.map(g => {
                         let somaG = 0;
                         const itns = (g.itens || []).map(i => {
                             const t = parseFloat(i.total) || 0;
+                            const d = parseFloat(i.desconto) || 0; // Captura o desconto individual
                             somaG += t;
                             return { 
                                 ...i, 
                                 preco: fmt(i.preco), 
-                                desconto: parseFloat(i.desconto) > 0 ? fmt(i.desconto) : null,
-                                total: fmt(t) 
+                                total: fmt(t),
+                                desconto: d > 0 ? fmt(d) : null // ADICIONADO: Agora o desconto vai para o template
                             };
                         });
-                        return { ...g, itens: itns, totalDoGrupo: multiGrupo ? fmt(somaG) : null };
+                        return { ...g, itens: itns, totalDoGrupo: data.produtos.length > 1 ? fmt(somaG) : null };
                     });
                 }
             }
 
-            // 4. LÓGICA ESPECÍFICA: PREVENTIVAS (MATERIAIS E MÃO DE OBRA)
+            // 4. LÓGICA ESPECÍFICA: PREVENTIVAS / RELATÓRIOS
             if (templateName === "Preventiva") {
-                // Formatação simples para checklists ou materiais se houver preços envolvidos
-                if (data.maoDeObra) {
-                    viewModel.maoDeObra = data.maoDeObra.map(m => ({
-                        ...m,
-                        valor: m.valor ? fmt(m.valor) : null
-                    }));
-                }
-                // Materiais costumam ser apenas listagem de QTD e Nome
-                if (data.materiais) {
-                    viewModel.materiais = data.materiais;
-                }
+                viewModel.maoObra = normalizeList(data.maoObra || data.maoDeObra);
+                viewModel.material = normalizeList(data.material || data.materiais);
+                viewModel.cliente = data.cliente || {};
+                viewModel.relatorio = data.relatorio || {};
             }
 
             // 5. RENDERIZAÇÃO E GERAÇÃO DO PDF
@@ -130,10 +154,15 @@ app.storageQueue("GeneratePdfFromQueue", {
 
             const qsc = QueueServiceClient.fromConnectionString(process.env.PDF_RESULTS_CONNECTION_STRING || process.env.AZURE_STORAGE_CONNECTION_STRING);
             const qc = qsc.getQueueClient(process.env.PDF_RESULTS_QUEUE_NAME || "pdf-results");
-            await qc.sendMessage(Buffer.from(JSON.stringify({ status: "SUCCEEDED", reportId, pdfUrl: blockBlobClient.url, dataverse: data.dataverse })).toString("base64"));
+            await qc.sendMessage(Buffer.from(JSON.stringify({ 
+                status: "SUCCEEDED", 
+                reportId, 
+                pdfUrl: blockBlobClient.url, 
+                dataverse: data.dataverse 
+            })).toString("base64"));
 
         } catch (err) {
-            context.log(`Erro: ${err.message}`);
+            context.log(`Erro fatal: ${err.message}`);
             throw err;
         }
     }
