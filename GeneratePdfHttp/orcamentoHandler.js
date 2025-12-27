@@ -8,8 +8,9 @@ module.exports = function(viewModel, data) {
     const descFin = parseFloat(h.descontoFinanceiroValor) || 0;
     const vIva = Math.max(0, totalFim - totalLiq + descFin);
 
+    // REPARADO: Usamos o spread (...h) primeiro para manter o reportNumber e a data original
     viewModel.header = {
-        ...h,
+        ...h, 
         totalBruto: fmt(h.totalBruto),
         totalDescontosItens: fmt(h.totalDescontosItens),
         descontoFinanceiro: descFin > 0 ? fmt(descFin) : null,
@@ -26,9 +27,18 @@ module.exports = function(viewModel, data) {
                 const t = parseFloat(i.total) || 0;
                 const d = parseFloat(i.desconto) || 0;
                 somaG += t;
-                return { ...i, preco: fmt(i.preco), total: fmt(t), desconto: d > 0 ? fmt(d) : null };
+                return { 
+                    ...i, 
+                    preco: fmt(i.preco), 
+                    total: fmt(t), 
+                    desconto: d > 0 ? fmt(d) : null 
+                };
             });
-            return { ...g, itens: itns, totalDoGrupo: data.produtos.length > 1 ? fmt(somaG) : null };
+            return { 
+                ...g, 
+                itens: itns, 
+                totalDoGrupo: data.produtos.length > 1 ? fmt(somaG) : null 
+            };
         });
     }
     return viewModel;
