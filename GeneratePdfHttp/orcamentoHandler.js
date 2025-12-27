@@ -8,7 +8,6 @@ module.exports = function(viewModel, data) {
     const descFin = parseFloat(h.descontoFinanceiroValor) || 0;
     const vIva = Math.max(0, totalFim - totalLiq + descFin);
 
-    // REPARADO: Usamos o spread (...h) primeiro para manter o reportNumber e a data original
     viewModel.header = {
         ...h, 
         totalBruto: fmt(h.totalBruto),
@@ -27,11 +26,19 @@ module.exports = function(viewModel, data) {
                 const t = parseFloat(i.total) || 0;
                 const d = parseFloat(i.desconto) || 0;
                 somaG += t;
+
+                // LÓGICA DA IMAGEM: Construir link apenas se houver prod_id
+                let fotoUrl = null;
+                if (i.prod_id && i.prod_id.trim() !== "" && i.prod_id !== "0") {
+                    fotoUrl = `https://extincorpdfsstore.blob.core.windows.net/produtos/${i.prod_id}.jpg`;
+                }
+
                 return { 
                     ...i, 
                     preco: fmt(i.preco), 
                     total: fmt(t), 
-                    desconto: d > 0 ? fmt(d) : null 
+                    desconto: d > 0 ? fmt(d) : null,
+                    fotoUrl: fotoUrl
                 };
             });
             return { 
