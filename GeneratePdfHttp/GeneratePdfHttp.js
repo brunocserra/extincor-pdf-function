@@ -16,7 +16,7 @@ const FormData = require("form-data");
 const GOTENBERG_URL = process.env.GOTENBERG_URL;
 const AZURE_STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING;
 const CONTAINER_NAME = process.env.PDF_BLOB_CONTAINER || "pdf-reports";
-const BLOB_PREFIX = process.env.PDF_BLOB_PREFIX || "";
+const BLOB_PREFIX = process.env.PDF_BLOB_PREFIX || "relatorios/";
 
 const QUEUE_CONNECTION = process.env.PDF_QUEUE_CONNECTION || "PDF_QUEUE_STORAGE";
 const RESULTS_QUEUE_NAME = process.env.PDF_RESULTS_QUEUE_NAME || "pdf-results";
@@ -32,19 +32,6 @@ function log(context, message) {
     console.log(message);
 }
 
-async function sendResultMessage(resultObj, context) {
-    if (!RESULTS_CONN_STR) return;
-    try {
-        const qsc = QueueServiceClient.fromConnectionString(RESULTS_CONN_STR);
-        const qc = qsc.getQueueClient(RESULTS_QUEUE_NAME);
-        await qc.createIfNotExists();
-        const messageText = JSON.stringify(resultObj);
-        await qc.sendMessage(Buffer.from(messageText).toString("base64"));
-    } catch (err) {
-        log(context, `[QUEUE ERROR] Erro ao enviar resultado: ${err?.message}`);
-    }
-}
-
 function normalizeList(arrOrNull) {
     if (!arrOrNull) return [];
     const out = [];
@@ -55,36 +42,38 @@ function normalizeList(arrOrNull) {
         str.split(";").map(p => p.trim()).filter(p => p.length > 0).forEach(p => out.push(p));
     };
     if (typeof arrOrNull === "string") pushSplit(arrOrNull);
-    else if (Array.isArray(arrOrNull)) arrOrNull.forEach(item => {
-        if (typeof item === "string") pushSplit(item);
-        else if (item && typeof item === "object") pushSplit(item.Value ?? item.Result ?? item.Name ?? "");
-    });
+    else if (Array.isArray(arrOrNull)) {
+        for (const item of arrOrNull) {
+            if (typeof item === "string") pushSplit(item);
+            else if (item && typeof item === "object") {
+                pushSplit(item.Value ?? item.Result ?? item.Name ?? item.Label ?? "");
+            }
+        }
+    }
     return out;
 }
 
-function safeJsonParse(input, context) {
-    try { return typeof input === "string" ? JSON.parse(input) : input; }
-    catch (e) { log(context, `[JSON ERROR] ${e?.message}`); throw e; }
-}
-
-async function optimizePhoto(url, i, context) {
+async function fetchAndOptimizePhoto(url, i, context) {
     try {
-        const r = await axios.get(url, { responseType: "arraybuffer", timeout: 20000 });
+        const r = await axios.get(url, { responseType: "arraybuffer", timeout: 25000 });
         if (!r.data) return null;
+        
         const outBuf = await sharp(Buffer.from(r.data))
             .rotate()
             .resize({ width: 1200, withoutEnlargement: true })
-            .jpeg({ quality: 70, mozjpeg: true })
+            .jpeg({ quality: 65, mozjpeg: true })
             .toBuffer();
-        return { filename: `img_${String(i).padStart(2, "0")}.jpg`, buffer: outBuf };
+
+        const filename = `img_${String(i + 1).padStart(2, "0")}.jpg`;
+        return { filename, buffer: outBuf };
     } catch (e) {
-        log(context, `[IMG ERR] Falha na foto ${i}: ${e.message}`);
+        log(context, `[IMG ERR] Falha na foto ${i + 1}: ${e.message}`);
         return null;
     }
 }
 
 // =====================
-// HANDLER PRINCIPAL
+// HANDLER
 // =====================
 
 app.storageQueue("GeneratePdfFromQueue", {
@@ -92,87 +81,74 @@ app.storageQueue("GeneratePdfFromQueue", {
     connection: QUEUE_CONNECTION,
 
     handler: async (queueItem, context) => {
-        const payload = safeJsonParse(queueItem, context);
-        const data = payload?.data ?? payload ?? {};
+        const rawPayload = typeof queueItem === "string" ? JSON.parse(queueItem) : queueItem;
+        const data = rawPayload?.data ?? rawPayload ?? {};
 
-        // Identificação do Documento
         const templateBase = data.templateName || "Preventiva"; 
-        const templateFile = `${templateBase}.html`;
         const reportId = data.reportId || data.header?.reportNumber || `DOC_${Date.now()}`;
-        const subFolder = data.subFolder || `${templateBase.toLowerCase()}s/`;
-
-        log(context, `[EXE] Template: ${templateFile} | ID: ${reportId}`);
+        
+        log(context, `[START] Processando ${templateBase} ID: ${reportId}`);
 
         try {
-            if (!GOTENBERG_URL || !AZURE_STORAGE_CONNECTION_STRING) throw new Error("Missing Env Vars");
-
-            // 1. Validar existência do template
-            const templatePath = path.join(__dirname, templateFile);
-            if (!fs.existsSync(templatePath)) throw new Error(`Template ${templateFile} não encontrado.`);
-
-            // 2. Processar Fotos (apenas se existirem no payload)
+            // 1. Processar Fotos (Comum a ambos)
             const photoAssets = [];
             const localPhotoNames = [];
-            const rawFotos = data.fotos || [];
+            const rawFotos = normalizeList(data.fotos);
             
             for (let i = 0; i < rawFotos.length; i++) {
-                const photo = await optimizePhoto(rawFotos[i], i, context);
+                const photo = await fetchAndOptimizePhoto(rawFotos[i], i, context);
                 if (photo) {
                     photoAssets.push(photo);
-                    localPhotoNames.push(photo.filename);
+                    localPhotoNames.push(photo.filename); 
                 }
             }
 
-            // 3. PROCESSAMENTO DE JSON POR TEMPLATE (Business Logic)
-            let viewModel = {};
+            // 2. Construção do ViewModel Específico por Template
+            let viewModel = {
+                reportId: String(reportId),
+                header: data.header || {},
+                cliente: data.cliente || {},
+                fotos: localPhotoNames,
+                temFotos: localPhotoNames.length > 0
+            };
 
-            switch (templateBase) {
-                case "Orcamento":
-                    viewModel = {
-                        reportId: reportId,
-                        header: data.header || {},
-                        cliente: data.cliente || {},
-                        produtos: data.produtos || [], // Estrutura de Grupos
-                        resumo: data.resumo || {},
-                        notas: data.notas || "",
-                        fotos: localPhotoNames,
-                        temFotos: localPhotoNames.length > 0
-                    };
-                    break;
-
-                case "Preventiva":
-                    viewModel = {
-                        reportId: reportId,
-                        header: data.header || {},
-                        cliente: data.cliente || {},
-                        relatorio: data.relatorio || {},
-                        maoObra: normalizeList(data.maoObra),
-                        material: normalizeList(data.material),
-                        fotos: localPhotoNames,
-                        temFotos: localPhotoNames.length > 0
-                    };
-                    break;
-
-                default:
-                    // Se for um novo template ainda não mapeado, passa o objeto bruto
-                    viewModel = { 
-                        ...data, 
-                        reportId, 
-                        fotos: localPhotoNames, 
-                        temFotos: localPhotoNames.length > 0 
-                    };
+            if (templateBase === "Orcamento") {
+                // Estrutura para Orçamentos
+                viewModel.produtos = data.produtos || []; 
+                viewModel.resumo = data.resumo || {};
+                viewModel.notas = data.notas || "";
+            } else {
+                // Estrutura padrão (Preventiva)
+                viewModel.relatorio = data.relatorio || {};
+                viewModel.maoObra = normalizeList(data.maoObra);
+                viewModel.material = normalizeList(data.material);
             }
 
-            // 4. Renderização com Mustache
+            // 3. Renderizar HTML
+            const templatePath = path.join(__dirname, `${templateBase}.html`);
+            if (!fs.existsSync(templatePath)) throw new Error(`Template ${templateBase}.html não encontrado.`);
+            
             const htmlTemplate = fs.readFileSync(templatePath, "utf8");
             const renderedHtml = mustache.render(htmlTemplate, viewModel);
 
-            // 5. Comunicação com Gotenberg
+            // 4. Azure Blob Storage (Instanciar Clientes)
+            const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
+            const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
+            await containerClient.createIfNotExists();
+
+            // 5. UPLOAD DE DEBUG (HTML) - Essencial para testar Orçamentos
+            const debugBlobName = `${BLOB_PREFIX}debug_${reportId}.html`.replace(/\/{2,}/g, "/");
+            const debugBlobClient = containerClient.getBlockBlobClient(debugBlobName);
+            await debugBlobClient.uploadData(Buffer.from(renderedHtml, "utf8"), {
+                blobHTTPHeaders: { blobContentType: "text/html" }
+            });
+
+            // 6. Gotenberg
             const form = new FormData();
             form.append("files", Buffer.from(renderedHtml, "utf8"), { filename: "index.html", contentType: "text/html" });
-            photoAssets.forEach(a => {
-                form.append("files", a.buffer, { filename: a.filename, contentType: "image/jpeg" });
-            });
+            for (const asset of photoAssets) {
+                form.append("files", asset.buffer, { filename: asset.filename, contentType: "image/jpeg" });
+            }
             form.append("pdfFormat", "PDF/A-1b");
 
             const response = await axios.post(GOTENBERG_URL, form, {
@@ -181,32 +157,27 @@ app.storageQueue("GeneratePdfFromQueue", {
                 timeout: 120000
             });
 
-            // 6. Upload para Azure Blob Storage
-            const blobName = `${BLOB_PREFIX}${subFolder}${reportId}.pdf`.replace(/\/{2,}/g, "/");
-            const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
-            const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
-            await containerClient.createIfNotExists();
-
-            const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+            // 7. Upload PDF
+            const pdfBlobName = `${BLOB_PREFIX}${reportId}.pdf`.replace(/\/{2,}/g, "/");
+            const blockBlobClient = containerClient.getBlockBlobClient(pdfBlobName);
             await blockBlobClient.uploadData(Buffer.from(response.data), {
                 blobHTTPHeaders: { blobContentType: "application/pdf" }
             });
 
-            // 7. Resposta para a Queue de Resultados (Callback)
-            await sendResultMessage({
+            // 8. Resultado
+            const qsc = QueueServiceClient.fromConnectionString(RESULTS_CONN_STR);
+            const qc = qsc.getQueueClient(RESULTS_QUEUE_NAME);
+            await qc.createIfNotExists();
+            await qc.sendMessage(Buffer.from(JSON.stringify({
                 status: "SUCCEEDED",
-                templateUsed: templateBase,
-                reportId: reportId,
+                reportId,
                 pdfUrl: blockBlobClient.url,
-                blobName: blobName,
-                dataverse: data.dataverse // Metadados para o Power Automate
-            }, context);
-
-            log(context, `[OK] PDF ${reportId} gerado em ${subFolder}`);
+                debugUrl: debugBlobClient.url, // Link do HTML para debug rápido
+                dataverse: data.dataverse
+            })).toString("base64"));
 
         } catch (err) {
             log(context, `[ERROR] ${err.message}`);
-            await sendResultMessage({ status: "FAILED", error: err.message, reportId }, context);
             throw err;
         }
     }
