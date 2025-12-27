@@ -27,6 +27,12 @@ const JOBS_QUEUE_NAME = process.env.PDF_QUEUE_NAME || "pdf-generation-jobs";
 // HELPERS
 // =====================
 
+// Função para formatar números para o padrão 1.234,56
+const fmt = (val) => {
+    const num = parseFloat(val) || 0;
+    return num.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 function log(context, message) {
     if (context && typeof context.log === "function") return context.log(message);
     console.log(message);
@@ -81,12 +87,9 @@ app.storageQueue("GeneratePdfFromQueue", {
         const rawPayload = typeof queueItem === "string" ? JSON.parse(queueItem) : queueItem;
         const data = rawPayload?.data ?? rawPayload ?? {};
 
-        // 1. MAPEAMENTO GENÉRICO (Lê tudo do payload)
         const templateName = data.templateName || "Preventiva"; 
         const reportId = data.reportId || data.header?.reportNumber || `DOC_${Date.now()}`;
-        const subFolder = data.subFolder || ""; // Se vazio, salva na raiz do container
-        
-        // Garante que o caminho termina com barra e não tem barras duplas
+        const subFolder = data.subFolder || ""; 
         const dynamicPrefix = `${BASE_PREFIX}${subFolder}`.replace(/\/{2,}/g, "/");
 
         log(context, `[EXE] Template: ${templateName} | Pasta: ${dynamicPrefix} | ID: ${reportId}`);
@@ -104,37 +107,61 @@ app.storageQueue("GeneratePdfFromQueue", {
                 }
             }
 
-            // 3. VIEWMODEL GENÉRICO
-            // Passamos o objeto 'data' inteiro para que qualquer campo novo no JSON 
-            // seja acessível no Mustache automaticamente, além dos campos padronizados.
+            // 3. VIEWMODEL COM TRATAMENTO DE VALORES E GRUPOS
             const viewModel = {
-                ...data, // Espalha tudo (cliente, header, produtos, relatorio, etc.)
+                ...data,
                 reportId,
                 fotos: localPhotoNames,
                 temFotos: localPhotoNames.length > 0,
-                // Garantimos normalização de listas conhecidas para evitar erros de template
+                header: data.header ? {
+                    ...data.header,
+                    totalLiquido: fmt(data.header.totalLiquido),
+                    totalFinal: fmt(data.header.totalFinal),
+                    valorIva: fmt((parseFloat(data.header.totalFinal) || 0) - (parseFloat(data.header.totalLiquido) || 0))
+                } : {},
                 maoObra: normalizeList(data.maoObra),
                 material: normalizeList(data.material)
             };
 
+            // Lógica de Produtos: Formatação e Totais de Secção
+            if (data.produtos && Array.isArray(data.produtos)) {
+                const multiGrupo = data.produtos.length > 1;
+                viewModel.produtos = data.produtos.map(grupo => {
+                    let somaSecao = 0;
+                    const itensProcessados = (grupo.itens || []).map(item => {
+                        somaSecao += (parseFloat(item.total) || 0);
+                        return {
+                            ...item,
+                            preco: fmt(item.preco),
+                            total: fmt(item.total)
+                        };
+                    });
+                    return {
+                        ...grupo,
+                        itens: itensProcessados,
+                        // Só envia totalDoGrupo se houver mais que um grupo no total
+                        totalDoGrupo: multiGrupo ? fmt(somaSecao) : null
+                    };
+                });
+            }
+
             // 4. RENDERIZAÇÃO
             const templatePath = path.join(__dirname, `${templateName}.html`);
-            if (!fs.existsSync(templatePath)) throw new Error(`Arquivo ${templateName}.html não encontrado no servidor.`);
+            if (!fs.existsSync(templatePath)) throw new Error(`Arquivo ${templateName}.html não encontrado.`);
             const renderedHtml = mustache.render(fs.readFileSync(templatePath, "utf8"), viewModel);
 
-            // 5. AZURE STORAGE (Clientes)
+            // 5. AZURE STORAGE
             const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
             const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
             await containerClient.createIfNotExists();
 
             // 6. UPLOAD DEBUG (HTML)
             const debugBlobName = `${dynamicPrefix}debug_${reportId}.html`.replace(/^\//, "");
-            const debugBlobClient = containerClient.getBlockBlobClient(debugBlobName);
-            await debugBlobClient.uploadData(Buffer.from(renderedHtml, "utf8"), {
+            await containerClient.getBlockBlobClient(debugBlobName).uploadData(Buffer.from(renderedHtml, "utf8"), {
                 blobHTTPHeaders: { blobContentType: "text/html" }
             });
 
-            // 7. GOTENBERG (Conversão)
+            // 7. GOTENBERG
             const form = new FormData();
             form.append("files", Buffer.from(renderedHtml, "utf8"), { filename: "index.html", contentType: "text/html" });
             photoAssets.forEach(a => form.append("files", a.buffer, { filename: a.filename, contentType: "image/jpeg" }));
@@ -153,7 +180,7 @@ app.storageQueue("GeneratePdfFromQueue", {
                 blobHTTPHeaders: { blobContentType: "application/pdf" }
             });
 
-            // 9. CALLBACK DE RESULTADO
+            // 9. CALLBACK
             const qsc = QueueServiceClient.fromConnectionString(RESULTS_CONN_STR);
             const qc = qsc.getQueueClient(RESULTS_QUEUE_NAME);
             await qc.createIfNotExists();
@@ -162,7 +189,6 @@ app.storageQueue("GeneratePdfFromQueue", {
                 reportId,
                 templateUsed: templateName,
                 pdfUrl: blockBlobClient.url,
-                debugUrl: debugBlobClient.url,
                 blobPath: pdfBlobName,
                 dataverse: data.dataverse
             })).toString("base64"));
@@ -171,7 +197,6 @@ app.storageQueue("GeneratePdfFromQueue", {
 
         } catch (err) {
             log(context, `[FATAL] ${err.message}`);
-            // Envia falha para a fila para que o Power Automate saiba que parou
             try {
                 const qsc = QueueServiceClient.fromConnectionString(RESULTS_CONN_STR);
                 const qc = qsc.getQueueClient(RESULTS_QUEUE_NAME);
