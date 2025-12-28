@@ -22,7 +22,7 @@
 
     @page {
       size: A4;
-      margin: 10mm 10mm 16mm 10mm;
+      margin: 10mm 10mm 10mm 10mm; /* Margens do papel */
     }
 
     body {
@@ -36,8 +36,27 @@
       line-height: 1.5;
     }
 
+    /* Estrutura de Tabela Mestre para evitar sobreposição do Footer */
     .main-table { width: 100%; border-collapse: collapse; }
     
+    /* Reserva espaço para o Header e Footer em cada página */
+    .header-space { height: 10px; } 
+    .footer-space { height: 35mm; } /* Espaço exato para não bater no rodapé */
+
+    .footer-fixed {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 30mm;
+      text-align: center;
+      font-size: 9px;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border-color);
+      padding-top: 10px;
+      background: white;
+    }
+
     .header-wrapper {
       display: flex;
       justify-content: space-between;
@@ -60,7 +79,7 @@
       margin-bottom: 20px;
       box-shadow: var(--shadow-md);
       overflow: hidden;
-      page-break-inside: avoid;
+      page-break-inside: avoid; /* Evita que um grupo de produtos seja cortado ao meio */
     }
 
     .section-header {
@@ -83,9 +102,9 @@
     .col-descricao-wrapper { 
       display: flex; 
       gap: 12px; 
-      align-items: center; /* Alinha verticalmente ao centro para ficar elegante */
+      align-items: center; 
       padding: 12px 20px;
-      text-align: left; /* Garante alinhamento à esquerda */
+      text-align: left;
     }
 
     .product-thumb {
@@ -108,16 +127,10 @@
     .col-price { width: 100px; text-align: right; vertical-align: middle !important; padding: 12px 20px !important; }
     .col-total { width: 110px; text-align: right; font-weight: 700; color: var(--brand-primary); vertical-align: middle !important; padding: 12px 20px !important; }
 
-    .totals-container { margin-top: 30px; display: flex; justify-content: flex-end; }
+    .totals-container { margin-top: 30px; display: flex; justify-content: flex-end; page-break-inside: avoid; }
     .totals-box { width: 320px; background: var(--brand-primary); color: white; padding: 20px; border-radius: var(--radius-lg); }
     .total-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; opacity: 0.9; }
     .total-row.grand-total { margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 18px; font-weight: 800; opacity: 1; }
-
-    .footer-fixed {
-      position: fixed; bottom: 6mm; left: 10mm; right: 10mm;
-      text-align: center; font-size: 9px; color: var(--text-muted); border-top: 1px solid var(--border-color); padding-top: 8px;
-      line-height: 1.4;
-    }
 
     @media print {
       body { width: 100%; }
@@ -137,6 +150,7 @@
     <thead>
       <tr>
         <td>
+          <div class="header-space"></div>
           <div class="header-wrapper">
             <div class="logo-container">
               <img src="https://extincorpdfsstore.blob.core.windows.net/assetsextincor/extlogo" alt="Extinçor">
@@ -187,9 +201,9 @@
             <table class="items-table">
               <thead>
                 <tr>
-                  <th>Descrição Técnica</th>
-                  <th class="col-qty">Qtd</th>
-                  <th class="col-price">Unidade</th>
+                  <th>Descrição </th>
+                  <th class="col-qty">Quant.</th>
+                  <th class="col-price">Preço Unit.</th>
                   <th class="col-total">Subtotal</th>
                 </tr>
               </thead>
@@ -204,9 +218,8 @@
                       </div>
                       {{/fotoUrl}}
                       
-                      <div style="flex-grow: 1; text-align: left;">
+                      <div style="flex-grow: 1;">
                         <span style="display: block; color: var(--text-main); font-weight: 400; margin-bottom: 2px;">{{descricao}}</span>
-                        
                         {{#summary}}<div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">{{summary}}</div>{{/summary}}
                         {{#desconto}}
                         <div style="font-size: 10px; color: #e11d48; font-weight: 600;">
@@ -268,6 +281,14 @@
         </td>
       </tr>
     </tbody>
+
+    <tfoot>
+      <tr>
+        <td>
+          <div class="footer-space"></div>
+        </td>
+      </tr>
+    </tfoot>
   </table>
 
 </body>
