@@ -27,7 +27,7 @@ module.exports = function(viewModel, data) {
         taxaIva: h.taxaIva ? parseFloat(h.taxaIva).toFixed(0) : "0"
     };
 
-    // Inicializar lista de URLs para a Azure Function descarregar [cite: 4]
+    // Esta lista será usada pela GeneratePdfHttp.js para fazer os downloads
     const listaParaDownload = [];
 
     // 2. Processamento dos Grupos e Produtos 
@@ -43,19 +43,20 @@ module.exports = function(viewModel, data) {
 
                 somaGrupo += totalLinha;
 
-                // Lógica de Imagem baseada no prod_id (ex: PRD-100044) [cite: 3, 5]
-                let fotoUrl = null;
+                // Lógica de Imagem Local (img_0.jpg, img_1.jpg...)
+                let nomeLocalFoto = null;
                 const idOriginal = i.prod_id ? String(i.prod_id).trim() : "";
                 
                 if (idOriginal !== "" && idOriginal !== "0") {
-                    // Criamos o URL absoluto para o Azure Blob Storage 
+                    // Criamos o URL absoluto para a Function descarregar
                     const urlAzure = `https://extincorpdfsstore.blob.core.windows.net/produtos/${idOriginal}.jpg`;
                     
-                    // Adicionamos à lista que o GeneratePdfHttp.js vai usar para o axios.get [cite: 4]
+                    // Guardamos o URL na lista e usamos o índice atual para o nome
+                    const index = listaParaDownload.length;
                     listaParaDownload.push(urlAzure);
                     
-                    // Definimos o URL para o HTML (O HTML usará o link direto do Azure) 
-                    fotoUrl = urlAzure;
+                    // O HTML vai referenciar a imagem que a Function vai guardar localmente
+                    nomeLocalFoto = `img_${index}.jpg`;
                 }
 
                 return { 
@@ -64,7 +65,7 @@ module.exports = function(viewModel, data) {
                     preco: fmt(precoUnit), 
                     total: fmt(totalLinha), 
                     desconto: descLinha > 0 ? fmt(descLinha) : null,
-                    fotoUrl: fotoUrl
+                    fotoUrl: nomeLocalFoto // <--- O HTML usa o nome local (img_X.jpg)
                 };
             });
 
@@ -78,9 +79,9 @@ module.exports = function(viewModel, data) {
         viewModel.produtos = [];
     }
 
-    // 3. Importante: Injetar a lista de fotos no viewModel para o GeneratePdfHttp processar [cite: 4]
-    // Isto garante que se o Gotenberg precisar de assets locais, a função os descarregue.
-    viewModel.fotosRaw = listaParaDownload;
+    // 3. Exportar a lista de URLs para a Function Principal processar
+    // Importante: No GeneratePdfHttp.js, deves ler esta variável: viewModel.listaDownloadsDinamica
+    viewModel.listaDownloadsDinamica = listaParaDownload;
 
     viewModel.cliente = data.cliente || {};
     viewModel.reportId = data.reportId || "S/N";
