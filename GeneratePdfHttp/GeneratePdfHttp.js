@@ -106,7 +106,7 @@ app.storageQueue("GeneratePdfFromQueue", {
             const blobServiceClient = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
             const containerName = process.env.PDF_BLOB_CONTAINER || "pdf-reports";
             const containerClient = blobServiceClient.getContainerClient(containerName);
-            const pdfBlobName = `${dynamicPrefix}${reportId}.pdf`.replace(/\/{2,}/g, "/").replace(/^\\//, "");
+            const pdfBlobName = `${dynamicPrefix}${reportId}.pdf`.replace(/\/{2,}/g, "/").replace(/^\//, "");
             const blockBlobClient = containerClient.getBlockBlobClient(pdfBlobName);
             await blockBlobClient.uploadData(Buffer.from(res.data), { blobHTTPHeaders: { blobContentType: "application/pdf" } });
 
