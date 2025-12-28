@@ -91,8 +91,24 @@
       align-items: center;
     }
 
-    .section-header h2 { font-size: 14px; font-weight: 800; color: var(--brand-primary); text-transform: uppercase; margin: 0; }
-    .total-seccao { font-size: 12px; font-weight: 700; color: var(--brand-primary); background: #e2e8f0; padding: 4px 10px; border-radius: 6px; }
+/* Aumentar o título do grupo para equilibrar com o novo subtotal */
+.section-header h2 { 
+    font-size: 16px; 
+    font-weight: 800; 
+    color: var(--brand-primary); 
+    text-transform: uppercase; 
+    margin: 0; 
+}
+    
+.total-seccao { 
+    font-size: 16px;           /* Aumentado de 12px para 16px */
+    font-weight: 800;           /* Mais negrito (Extra Bold) */
+    color: var(--brand-primary); 
+    background: #e2e8f0; 
+    padding: 6px 14px;          /* Aumentado o enchimento para acompanhar o texto */
+    border-radius: 8px;         /* Cantos ligeiramente mais arredondados */
+    border: 1px solid #cbd5e1;  /* Adicionada uma borda subtil para destaque */
+}
 
     .intro-text { padding: 20px; color: var(--text-muted); font-style: italic; border-left: 4px solid var(--brand-accent); margin: 20px 0; background: var(--bg-soft); border-radius: 0 8px 8px 0; }
 
@@ -131,7 +147,24 @@
     .totals-box { width: 320px; background: var(--brand-primary); color: white; padding: 20px; border-radius: var(--radius-lg); }
     .total-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; opacity: 0.9; }
     .total-row.grand-total { margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 18px; font-weight: 800; opacity: 1; }
+    
+/* Impede que a linha da tabela se parta */
+.items-table tr {
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+}
 
+/* Garante que o conteúdo dentro da célula também não quebre */
+.col-descricao-wrapper {
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+}
+
+/* Impede que o bloco de totais se separe */
+.totals-container {
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+}
     @media print {
       body { width: 100%; }
       .section { box-shadow: none; border: 1px solid #eee; }
