@@ -7,12 +7,11 @@ module.exports = function(viewModel, data) {
     
     // Valores Base vindos do Power Apps
     const totalBrutoItens = parseFloat(h.totalBruto) || 0;
-    const totalDescontosLinhas = parseFloat(h.totalDescontosItens) || 0; // Valor monetário dos descontos de linha
-    const percDescFinanceiro = parseFloat(h.descontoFinanceiroValor) || 0; // Percentagem (ex: 5)
+    const totalDescontosLinhas = parseFloat(h.totalDescontosItens) || 0; 
+    const percDescFinanceiro = parseFloat(h.descontoFinanceiroValor) || 0; 
     const taxaIva = (parseFloat(h.taxaIva) || 0) / 100;
 
-    // Lógica de Totais corrigida
-    // A base para o desconto financeiro é o total após os descontos de cada artigo
+    // Lógica de Totais Consolidada
     const baseAposDescontosLinhas = totalBrutoItens - totalDescontosLinhas;
     const valorDescFin = baseAposDescontosLinhas * (percDescFinanceiro / 100);
     
@@ -20,21 +19,21 @@ module.exports = function(viewModel, data) {
     const vIva = totalLiq * taxaIva;
     const totalFim = totalLiq + vIva;
     
-    const totalDescontosGeral = (totalBrutoItens - totalLiq);
-    const temDescontos = totalDescontosGeral > 0.01;
+    // CALCULO DO DESCONTO TOTAL (Linhas + Financeiro)
+    const totalDescontosSomado = (totalBrutoItens - totalLiq);
+    const temDescontos = totalDescontosSomado > 0.01;
 
     viewModel.header = {
         ...h, 
         totalBruto: fmt(totalBrutoItens),
         temDescontos: temDescontos,
-        totalDescontosItens: totalDescontosGeral > 0 ? fmt(totalDescontosGeral) : null,
-        labelDesconto: percDescFinanceiro > 0 ? `Desconto Financeiro (${percDescFinanceiro}%)` : "Desconto Financeiro",
-        descontoFinanceiro: valorDescFin > 0 ? fmt(valorDescFin) : null,
+        // Envia o total de todos os descontos somados para a linha única do HTML
+        totalDescontosGeral: fmt(totalDescontosSomado), 
         totalLiquido: fmt(totalLiq),
         valorIva: fmt(vIva),
         totalFinal: fmt(totalFim),
         taxaIva: (taxaIva * 100).toFixed(0),
-        variosGrupos: h.variosGrupos // Mantém a flag para mostrar/esconder o resumo
+        variosGrupos: h.variosGrupos 
     };
 
     // 2. Processamento dos Grupos e Produtos 
@@ -63,20 +62,17 @@ module.exports = function(viewModel, data) {
                         qty: parseFloat(i.qty) || 0,
                         preco: fmt(parseFloat(i.preco) || 0),
                         total: fmt(totalLinha),
-                        // CORREÇÃO: Mostra como percentagem e remove a cor (via CSS no HTML)
                         desconto: parseFloat(i.desconto) > 0 ? `${parseFloat(i.desconto)}%` : null,
                         fotoUrl: nomeLocalFoto
                     };
                 });
 
-                // Total do Grupo com IVA e proporcional ao desconto financeiro global
                 const fatorDescFin = (1 - (percDescFinanceiro / 100));
                 const somaGrupoComIva = (somaGrupoLiquida * fatorDescFin) * (1 + taxaIva);
 
                 return { 
                     ...g, 
                     itens: itensProcessados, 
-                    // Só envia totalDoGrupo se houver mais que um grupo (definido pela flag váriosGrupos)
                     totalDoGrupo: viewModel.header.variosGrupos ? fmt(somaGrupoComIva) : null 
                 };
             });
