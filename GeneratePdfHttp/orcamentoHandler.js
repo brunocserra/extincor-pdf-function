@@ -8,13 +8,10 @@ module.exports = function(viewModel, data) {
     // Valores Base
     const totalBrutoItens = parseFloat(h.totalBruto) || 0;
     const totalDescontosLinhas = parseFloat(h.totalDescontosItens) || 0;
-    const percDescFinanceiro = parseFloat(h.descontoFinanceiroValor) || 0; // Ex: 10
+    const percDescFinanceiro = parseFloat(h.descontoFinanceiroValor) || 0;
     const taxaIva = (parseFloat(h.taxaIva) || 0) / 100; // Ex: 0.16
 
-    // LÓGICA POWER APPS: 
-    // Total Líquido = (Soma de Itens com desconto de linha) * (1 - Desc. Financeiro)
-    // No seu Power Apps: Sum(col, qty * unit_price * (1-unit_discount/100)) * (1-financial/100)
-    
+    // Lógica de Totais
     const baseAposDescontosLinhas = totalBrutoItens - totalDescontosLinhas;
     const valorDescFin = baseAposDescontosLinhas * (percDescFinanceiro / 100);
     
@@ -26,9 +23,7 @@ module.exports = function(viewModel, data) {
     viewModel.header = {
         ...h, 
         totalBruto: fmt(totalBrutoItens),
-        // Valor total de descontos (Linhas + Financeiro)
         totalDescontosItens: totalDescontosGeral > 0 ? fmt(totalDescontosGeral) : null,
-        // Texto para o desconto financeiro (ex: "Desconto Financeiro (10%)")
         labelDesconto: percDescFinanceiro > 0 ? `Desconto Financeiro (${percDescFinanceiro}%)` : "Desconto Financeiro",
         descontoFinanceiro: valorDescFin > 0 ? fmt(valorDescFin) : null,
         totalLiquido: fmt(totalLiq),
@@ -41,16 +36,17 @@ module.exports = function(viewModel, data) {
     const listaParaDownload = [];
     if (data.produtos && Array.isArray(data.produtos)) {
         viewModel.produtos = data.produtos
-            .filter(g => g && (g.nomeGrupo || (g.itens && g.itens.length > 0))) 
+            .filter(g => g && (g.nomeGrupo || (g.itens && g.itens.length > 0)))
             .map(g => {
-                let somaGrupo = 0;
+                let somaGrupoLiquida = 0;
+                
                 const itensProcessados = (g.itens || []).map(i => {
                     const qtd = parseFloat(i.qty) || 0;
                     const precoUnit = parseFloat(i.preco) || 0;
                     const totalLinha = parseFloat(i.total) || 0;
                     const descLinha = parseFloat(i.desconto) || 0;
 
-                    somaGrupo += totalLinha;
+                    somaGrupoLiquida += totalLinha;
 
                     let nomeLocalFoto = null;
                     const idOriginal = i.prod_id ? String(i.prod_id).trim() : "";
@@ -65,17 +61,20 @@ module.exports = function(viewModel, data) {
                     return { 
                         ...i, 
                         qty: qtd,
-                        preco: fmt(precoUnit), 
-                        total: fmt(totalLinha), 
+                        preco: fmt(precoUnit),
+                        total: fmt(totalLinha),
                         desconto: descLinha > 0 ? fmt(descLinha) : null,
                         fotoUrl: nomeLocalFoto
                     };
                 });
 
+                // CÁLCULO COM IVA: Aplicar a taxa ao total líquido do grupo
+                const somaGrupoComIva = somaGrupoLiquida * (1 + taxaIva);
+
                 return { 
                     ...g, 
                     itens: itensProcessados, 
-                    totalDoGrupo: data.produtos.length > 1 ? fmt(somaGrupo) : null 
+                    totalDoGrupo: data.produtos.length > 1 ? fmt(somaGrupoComIva) : null 
                 };
             });
     } else {
