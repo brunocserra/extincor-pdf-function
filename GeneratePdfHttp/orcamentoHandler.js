@@ -9,7 +9,7 @@ module.exports = function(viewModel, data) {
     const totalBrutoItens = parseFloat(h.totalBruto) || 0;
     const totalDescontosLinhas = parseFloat(h.totalDescontosItens) || 0;
     const percDescFinanceiro = parseFloat(h.descontoFinanceiroValor) || 0;
-    const taxaIva = (parseFloat(h.taxaIva) || 0) / 100; // Ex: 0.16
+    const taxaIva = (parseFloat(h.taxaIva) || 0) / 100;
 
     // Lógica de Totais
     const baseAposDescontosLinhas = totalBrutoItens - totalDescontosLinhas;
@@ -19,14 +19,14 @@ module.exports = function(viewModel, data) {
     const vIva = totalLiq * taxaIva;
     const totalFim = totalLiq + vIva;
     
-    // Verificação de existência de descontos (de linha ou financeiros)
+    // Verificação se existem descontos para mudar o layout da caixa de totais
     const totalDescontosGeral = (totalBrutoItens - totalLiq);
-    const temDescontos = totalDescontosGeral > 0.01; // Margem para erros de arredondamento
+    const temDescontos = totalDescontosGeral > 0.01;
 
     viewModel.header = {
         ...h, 
         totalBruto: fmt(totalBrutoItens),
-        temDescontos: temDescontos, // Usado no HTML para esconder/mostrar Bruto e Líquido
+        temDescontos: temDescontos,
         totalDescontosItens: totalDescontosGeral > 0 ? fmt(totalDescontosGeral) : null,
         labelDesconto: percDescFinanceiro > 0 ? `Desconto Financeiro (${percDescFinanceiro}%)` : "Desconto Financeiro",
         descontoFinanceiro: valorDescFin > 0 ? fmt(valorDescFin) : null,
@@ -45,17 +45,11 @@ module.exports = function(viewModel, data) {
                 let somaGrupoLiquida = 0;
                 
                 const itensProcessados = (g.itens || []).map(i => {
-                    const qtd = parseFloat(i.qty) || 0;
-                    const precoUnit = parseFloat(i.preco) || 0;
                     const totalLinha = parseFloat(i.total) || 0;
-                    const descLinha = parseFloat(i.desconto) || 0;
-
-                    // Somamos o total líquido da linha (já com desconto de linha se houver)
                     somaGrupoLiquida += totalLinha;
 
                     let nomeLocalFoto = null;
                     const idOriginal = i.prod_id ? String(i.prod_id).trim() : "";
-                    
                     if (idOriginal !== "" && idOriginal !== "0") {
                         const urlAzure = `https://extincorpdfsstore.blob.core.windows.net/produtos/${idOriginal}.jpg`;
                         const index = listaParaDownload.length;
@@ -65,17 +59,15 @@ module.exports = function(viewModel, data) {
 
                     return { 
                         ...i, 
-                        qty: qtd,
-                        preco: fmt(precoUnit),
+                        qty: parseFloat(i.qty) || 0,
+                        preco: fmt(parseFloat(i.preco) || 0),
                         total: fmt(totalLinha),
-                        desconto: descLinha > 0 ? fmt(descLinha) : null,
+                        desconto: parseFloat(i.desconto) > 0 ? fmt(parseFloat(i.desconto)) : null,
                         fotoUrl: nomeLocalFoto
                     };
                 });
 
-                // CÁLCULO DO GRUPO COM IVA:
-                // Aplicamos o IVA e também o desconto financeiro proporcional ao grupo 
-                // para que a soma dos subtotais bata certo com o Total Final.
+                // Total do Grupo com IVA e proporcional ao desconto financeiro
                 const fatorDescFin = (1 - (percDescFinanceiro / 100));
                 const somaGrupoComIva = (somaGrupoLiquida * fatorDescFin) * (1 + taxaIva);
 
