@@ -266,13 +266,17 @@
           <div class="totals-container">
             <div class="totals-box">
               {{#header.temDescontos}}
-              <div class="total-row"><span>Total Bruto</span><span>{{header.totalBruto}}€</span></div>
-              
-              {{#header.descontoFinanceiro}}
-              <div class="total-row" style="color: #fda4af;"><span>{{header.labelDesconto}}</span><span>-{{header.descontoFinanceiro}}€</span></div>
-              {{/header.descontoFinanceiro}}
+                <div class="total-row"><span>Total Bruto</span><span>{{header.totalBruto}}€</span></div>
+                
+                {{#header.descontoFinanceiro}}
+                <div class="total-row" style="color: #fda4af;"><span>{{header.labelDesconto}}</span><span>-{{header.descontoFinanceiro}}€</span></div>
+                {{/header.descontoFinanceiro}}
 
-              <div class="total-row"><span>Total Líquido</span><span>{{header.totalLiquido}}€</span></div>
+                <div class="total-row"><span>Total Líquido</span><span>{{header.totalLiquido}}€</span></div>
+              {{/header.temDescontos}}
+
+              {{^header.temDescontos}}
+                <div class="total-row"><span>Total s/ IVA</span><span>{{header.totalLiquido}}€</span></div>
               {{/header.temDescontos}}
 
               <div class="total-row"><span>IVA ({{header.taxaIva}}%)</span><span>{{header.valorIva}}€</span></div>
