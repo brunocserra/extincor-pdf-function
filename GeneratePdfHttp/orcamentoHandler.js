@@ -18,11 +18,15 @@ module.exports = function(viewModel, data) {
     const totalLiq = baseAposDescontosLinhas - valorDescFin;
     const vIva = totalLiq * taxaIva;
     const totalFim = totalLiq + vIva;
+    
+    // Verificação de existência de descontos (de linha ou financeiros)
     const totalDescontosGeral = (totalBrutoItens - totalLiq);
+    const temDescontos = totalDescontosGeral > 0.01; // Margem para erros de arredondamento
 
     viewModel.header = {
         ...h, 
         totalBruto: fmt(totalBrutoItens),
+        temDescontos: temDescontos, // Usado no HTML para esconder/mostrar Bruto e Líquido
         totalDescontosItens: totalDescontosGeral > 0 ? fmt(totalDescontosGeral) : null,
         labelDesconto: percDescFinanceiro > 0 ? `Desconto Financeiro (${percDescFinanceiro}%)` : "Desconto Financeiro",
         descontoFinanceiro: valorDescFin > 0 ? fmt(valorDescFin) : null,
@@ -46,6 +50,7 @@ module.exports = function(viewModel, data) {
                     const totalLinha = parseFloat(i.total) || 0;
                     const descLinha = parseFloat(i.desconto) || 0;
 
+                    // Somamos o total líquido da linha (já com desconto de linha se houver)
                     somaGrupoLiquida += totalLinha;
 
                     let nomeLocalFoto = null;
@@ -68,8 +73,11 @@ module.exports = function(viewModel, data) {
                     };
                 });
 
-                // CÁLCULO COM IVA: Aplicar a taxa ao total líquido do grupo
-                const somaGrupoComIva = somaGrupoLiquida * (1 + taxaIva);
+                // CÁLCULO DO GRUPO COM IVA:
+                // Aplicamos o IVA e também o desconto financeiro proporcional ao grupo 
+                // para que a soma dos subtotais bata certo com o Total Final.
+                const fatorDescFin = (1 - (percDescFinanceiro / 100));
+                const somaGrupoComIva = (somaGrupoLiquida * fatorDescFin) * (1 + taxaIva);
 
                 return { 
                     ...g, 
