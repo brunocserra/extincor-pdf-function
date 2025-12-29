@@ -121,7 +121,8 @@
 
     .col-qty { width: 50px; text-align: center; padding: 10px 15px !important; }
     .col-price { width: 85px; text-align: right; padding: 10px 15px !important; }
-    .col-disc { width: 75px; text-align: right; color: #e11d48; font-weight: 500; padding: 10px 15px !important; }
+    /* CORREÇÃO: Removida a cor vermelha e ajustada a fonte */
+    .col-disc { width: 75px; text-align: right; color: var(--text-muted); font-weight: 400; padding: 10px 15px !important; }
     .col-total { width: 95px; text-align: right; font-weight: 700; color: var(--brand-primary); padding: 10px 15px !important; }
 
     .summary-section {
@@ -209,7 +210,7 @@
           <div class="section">
             <div class="section-header">
               <h2>{{nomeGrupo}}</h2>
-              {{#totalDoGrupo}}<span class="total-seccao">Subtotal (c/ IVA): {{totalDoGrupo}}€</span>{{/totalDoGrupo}}
+              {{#totalDoGrupo}}<span class="total-seccao">Subtotal (c/ IVA): {{totalDoGrupo}}</span>{{/totalDoGrupo}}
             </div>
             <table class="items-table">
               <thead>
@@ -237,7 +238,7 @@
                   </td>
                   <td class="col-qty">{{qty}}</td>
                   <td class="col-price">{{preco}}€</td>
-                  <td class="col-disc">{{#desconto}}-{{desconto}}€{{/desconto}}</td>
+                  <td class="col-disc">{{desconto}}</td>
                   <td class="col-total">{{total}}€</td>
                 </tr>
                 {{/itens}}
@@ -257,7 +258,7 @@
       {{#produtos}}
       <tr>
         <td class="summary-group-name">{{nomeGrupo}}</td>
-        <td class="summary-group-value">{{totalDoGrupo}}€</td>
+        <td class="summary-group-value">{{totalDoGrupo}}</td>
       </tr>
       {{/produtos}}
     </tbody>
