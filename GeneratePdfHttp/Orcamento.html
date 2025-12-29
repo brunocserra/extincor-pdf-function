@@ -246,22 +246,24 @@
           </div>
           {{/produtos}}
 
-          <div class="summary-section">
-            <div class="summary-header">
-              <span>Resumo por Capítulo / Secção</span>
-              <span style="font-size: 11px; opacity: 0.8; text-transform: none;">Total (c/ IVA)</span>
-            </div>
-            <table class="summary-table">
-              <tbody>
-                {{#produtos}}
-                <tr>
-                  <td class="summary-group-name">{{nomeGrupo}}</td>
-                  <td class="summary-group-value">{{totalDoGrupo}}€</td>
-                </tr>
-                {{/produtos}}
-              </tbody>
-            </table>
-          </div>
+{{#header.variosGrupos}}
+<div class="summary-section">
+  <div class="summary-header">
+    <span>Resumo por Capítulo / Secção</span>
+    <span style="font-size: 11px; opacity: 0.8; text-transform: none;">Total (c/ IVA)</span>
+  </div>
+  <table class="summary-table">
+    <tbody>
+      {{#produtos}}
+      <tr>
+        <td class="summary-group-name">{{nomeGrupo}}</td>
+        <td class="summary-group-value">{{totalDoGrupo}}€</td>
+      </tr>
+      {{/produtos}}
+    </tbody>
+  </table>
+</div>
+{{/header.variosGrupos}}
 
           <div class="totals-container">
             <div class="totals-box">
