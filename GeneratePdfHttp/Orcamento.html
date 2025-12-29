@@ -111,7 +111,6 @@
       display: flex; gap: 12px; align-items: center; padding: 10px 15px; text-align: left;
     }
 
-    /* Reserva espaço para imagem mesmo que não exista */
     .product-thumb-container {
       width: 55px; height: 55px; flex-shrink: 0;
       border: 1px solid var(--border-color); border-radius: 8px;
@@ -125,7 +124,6 @@
     .col-disc { width: 75px; text-align: right; color: #e11d48; font-weight: 500; padding: 10px 15px !important; }
     .col-total { width: 95px; text-align: right; font-weight: 700; color: var(--brand-primary); padding: 10px 15px !important; }
 
-    /* Resumo com estilo semelhante aos grupos */
     .summary-section {
       margin-top: 30px;
       border-radius: var(--radius-lg);
@@ -135,13 +133,16 @@
       page-break-inside: avoid;
     }
     .summary-header { 
-      background: #f1f5f9; /* Tom ligeiramente diferente para distinguir */
+      background: #f1f5f9; 
       padding: 12px 20px; 
       font-weight: 800; 
       text-transform: uppercase; 
       font-size: 13px; 
       color: var(--brand-primary);
       border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     .summary-table { width: 100%; border-collapse: collapse; }
     .summary-table td { padding: 10px 20px; border-bottom: 1px solid var(--border-color); }
@@ -208,7 +209,7 @@
           <div class="section">
             <div class="section-header">
               <h2>{{nomeGrupo}}</h2>
-              {{#totalDoGrupo}}<span class="total-seccao">Subtotal: {{totalDoGrupo}}€</span>{{/totalDoGrupo}}
+              {{#totalDoGrupo}}<span class="total-seccao">Subtotal (c/ IVA): {{totalDoGrupo}}€</span>{{/totalDoGrupo}}
             </div>
             <table class="items-table">
               <thead>
@@ -246,7 +247,10 @@
           {{/produtos}}
 
           <div class="summary-section">
-            <div class="summary-header">Resumo por Capítulo / Secção</div>
+            <div class="summary-header">
+              <span>Resumo por Capítulo / Secção</span>
+              <span style="font-size: 11px; opacity: 0.8; text-transform: none;">Total (c/ IVA)</span>
+            </div>
             <table class="summary-table">
               <tbody>
                 {{#produtos}}
@@ -261,11 +265,16 @@
 
           <div class="totals-container">
             <div class="totals-box">
+              {{#header.temDescontos}}
               <div class="total-row"><span>Total Bruto</span><span>{{header.totalBruto}}€</span></div>
+              
               {{#header.descontoFinanceiro}}
               <div class="total-row" style="color: #fda4af;"><span>{{header.labelDesconto}}</span><span>-{{header.descontoFinanceiro}}€</span></div>
               {{/header.descontoFinanceiro}}
+
               <div class="total-row"><span>Total Líquido</span><span>{{header.totalLiquido}}€</span></div>
+              {{/header.temDescontos}}
+
               <div class="total-row"><span>IVA ({{header.taxaIva}}%)</span><span>{{header.valorIva}}€</span></div>
               <div class="total-row grand-total"><span>TOTAL FINAL</span><span>{{header.totalFinal}}€</span></div>
             </div>
